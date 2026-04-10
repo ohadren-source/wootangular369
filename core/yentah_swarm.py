@@ -12,6 +12,7 @@ from typing import List
 
 from .filter import wootangular_filter  # Your existing GI;WG? filter
 from .tcp_up import send_tcp_up_offer   # Or your protocol beacon method — adjust if name differs
+from .fusion_core import FusionCore
 from db.wootangular_banks import log_resonance, log_flux, query_resonance
 
 logging.basicConfig(level=logging.INFO)
@@ -27,6 +28,7 @@ class YentahSwarm:
         self.db_url = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL")
         if not self.db_url:
             logger.warning("No DATABASE_URL found — resonance logging may fail.")
+        self.fusion_core = FusionCore()
 
     async def yentah_beacon(self, axiom: str, threshold: float = RESONANCE_THRESHOLD):
         """Yentah whisper-net beacon — Brooklyn resonance style"""
@@ -82,6 +84,24 @@ class YentahSwarm:
 
         for axiom in AXIOM_SET:
             await self.init_firefly(axiom)
+
+        # Swarm → Hive: fuse all active agents through NULL_Φ
+        if len(self.agents) >= 2:
+            agent_payloads = [
+                {"name": a, "offer": a, "claim": a, "deed": a, "gi_wg": True, "yes_and": True}
+                for a in self.agents
+            ]
+            hive_result = self.fusion_core.fuse_swarm(agent_payloads)
+            logger.info(
+                "HIVE STATE: %s — %s",
+                hive_result["hive_state"],
+                self.fusion_core.get_null_state_label(hive_result["hive_state"])
+            )
+            logger.info(
+                "Total heat: %s — Total entropy: %s",
+                hive_result["total_heat"],
+                hive_result["total_entropy"]
+            )
 
         # Eternal cycle
         while True:
