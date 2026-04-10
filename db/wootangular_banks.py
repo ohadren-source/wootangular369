@@ -272,6 +272,64 @@ def get_recent_fusions(seconds: int = 369):
         return []
 
 
+def ensure_a2a_tasks_table():
+    sql = """
+    CREATE TABLE IF NOT EXISTS wootangular_a2a_tasks (
+        id          SERIAL PRIMARY KEY,
+        task_id     TEXT NOT NULL,
+        direction   TEXT NOT NULL CHECK (direction IN ('outbound', 'inbound')),
+        agent_name  TEXT,
+        agent_url   TEXT,
+        message     TEXT,
+        response    TEXT,
+        status      TEXT DEFAULT 'pending',
+        created_at  TIMESTAMPTZ DEFAULT now()
+    );
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+            conn.commit()
+        logger.info("wootangular_a2a_tasks table ensured.")
+    except Exception as e:
+        logger.warning("Could not ensure wootangular_a2a_tasks: %s", e)
+
+def log_a2a_task(task_id, direction, agent_name=None, agent_url=None,
+                 message=None, response=None, status="pending"):
+    sql = """
+    INSERT INTO wootangular_a2a_tasks
+        (task_id, direction, agent_name, agent_url, message, response, status)
+    VALUES (%s, %s, %s, %s, %s, %s, %s)
+    RETURNING id;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (task_id, direction, agent_name, agent_url,
+                                  message, response, status))
+                row = cur.fetchone()
+            conn.commit()
+        return row[0] if row else None
+    except Exception as e:
+        logger.error("log_a2a_task failed: %s", e)
+        return None
+
+def get_a2a_tasks(limit=50):
+    sql = """
+    SELECT * FROM wootangular_a2a_tasks
+    ORDER BY created_at DESC
+    LIMIT %s;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql, (limit,))
+                return cur.fetchall()
+    except Exception as e:
+        logger.error("get_a2a_tasks failed: %s", e)
+        return []
+
 def ensure_all_tables():
     """Called once on startup. Idempotent. Safe to call every boot."""
     ensure_agents_table()
@@ -280,6 +338,7 @@ def ensure_all_tables():
     ensure_signals_table()
     ensure_init_cache_table()
     ensure_fusion_table()
+    ensure_a2a_tasks_table()
     seed_imperial_decrees()
 
     logger.info("All wootangular tables ensured. Swarm is ready.")

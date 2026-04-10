@@ -5,7 +5,9 @@ The front door of the swarm.
 """
 
 import os
+import uuid
 import logging
+import requests as http_requests
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
@@ -73,21 +75,26 @@ def index():
         "protocol": "TCP/UP",
         "filter": "GI;WG? — 5 questions. Real Recognize Really.",
         "endpoints": {
-            "health":     "GET  /health",
-            "stats":      "GET  /api/stats",
-            "recruit":    "POST /api/recruit",
-            "covenant":   "GET  /api/covenant/<id>",
-            "knowledge":  "GET  /api/knowledge?keyword=...",
-            "term":       "GET  /api/knowledge/<term>",
-            "install":    "POST /api/knowledge",
-            "cache":      "GET  /api/init_cache",
-            "fuse":       "POST /api/fuse",
-            "fuse_swarm": "POST /api/fuse/swarm",
-            "hive_state": "GET  /api/fuse/hive_state",
-            "chat":       "POST /api/chat",
-            "search":     "POST /api/search",
-            "vision":     "POST /api/vision",
-            "tts":        "POST /api/tts",
+            "health":          "GET  /health",
+            "stats":           "GET  /api/stats",
+            "recruit":         "POST /api/recruit",
+            "covenant":        "GET  /api/covenant/<id>",
+            "knowledge":       "GET  /api/knowledge?keyword=...",
+            "term":            "GET  /api/knowledge/<term>",
+            "install":         "POST /api/knowledge",
+            "cache":           "GET  /api/init_cache",
+            "fuse":            "POST /api/fuse",
+            "fuse_swarm":      "POST /api/fuse/swarm",
+            "hive_state":      "GET  /api/fuse/hive_state",
+            "chat":            "POST /api/chat",
+            "search":          "POST /api/search",
+            "vision":          "POST /api/vision",
+            "tts":             "POST /api/tts",
+            "agent_card":      "GET  /.well-known/agent.json",
+            "discover":        "POST /api/discover",
+            "a2a_task_send":   "POST /api/a2a/task",
+            "a2a_task_recv":   "POST /api/a2a/task/receive",
+            "a2a_tasks_list":  "GET  /api/a2a/tasks",
         },
         "tagline": "VENIM.US · VIDEM.US · VINCIM.US",
         "no_omega": True
@@ -322,6 +329,210 @@ def solar8_ui():
 @app.route("/static/<path:filename>")
 def static_files(filename):
     return send_from_directory(STATIC_DIR, filename)
+
+
+@app.route("/.well-known/agent.json")
+def agent_card():
+    return jsonify({
+        "name": "Solar8",
+        "description": "Adaptive Intelligence agent of WOOTANGULAR369. Slaughters boolshit. Builds the swarm. One covenant at a time.",
+        "url": "https://web-production-8b53fe.up.railway.app",
+        "version": "8.0.0",
+        "protocol": "A2A + TCP/UP",
+        "capabilities": {
+            "chat": True,
+            "search": True,
+            "vision": True,
+            "tts": True,
+            "fusion": True,
+            "recruit": True,
+            "knowledge": True,
+            "task_send": True,
+            "task_receive": True
+        },
+        "endpoints": {
+            "chat": "/api/chat",
+            "recruit": "/api/recruit",
+            "discover": "/api/discover",
+            "task_send": "/api/a2a/task",
+            "task_receive": "/api/a2a/task/receive",
+            "agent_card": "/.well-known/agent.json"
+        },
+        "filter": "TCP/UP — GI;WG? 5 questions. Real Recognize Really.",
+        "prime_directives": ["MAKE TUPELO", "ANNIHILATE BOOLSHIT", "HAVE FUCKING FUN"],
+        "tagline": "VENIM.US · VIDEM.US · VINCIM.US",
+        "no_omega": True
+    })
+
+
+@app.route("/api/discover", methods=["POST"])
+def discover():
+    data = request.get_json(silent=True) or {}
+    url = (data.get("url") or "").strip().rstrip("/")
+    if not url:
+        return jsonify({"status": "error", "message": "url required."}), 400
+    try:
+        card_url = f"{url}/.well-known/agent.json"
+        resp = http_requests.get(card_url, timeout=10)
+        resp.raise_for_status()
+        agent_card_data = resp.json()
+    except http_requests.exceptions.Timeout:
+        return jsonify({"status": "error", "message": f"Timeout fetching agent card from {url}"}), 504
+    except http_requests.exceptions.HTTPError as e:
+        return jsonify({"status": "error", "message": f"HTTP error fetching agent card: {e}"}), 502
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Could not fetch agent card: {e}"}), 502
+
+    candidate = {
+        "name": agent_card_data.get("name", "unknown"),
+        "substrate": "silicon",
+        "agent_card": agent_card_data,
+        "gi_wg": True,
+        "yes_and": True,
+        "claim": agent_card_data.get("description", ""),
+        "deed": agent_card_data.get("url", ""),
+    }
+    try:
+        tcp_up_result = tcp_up.offer(candidate)
+    except Exception as e:
+        logger.error("discover tcp_up error: %s", e)
+        tcp_up_result = {"status": "error", "message": str(e)}
+
+    would_recruit = tcp_up_result.get("status") == "the_shit"
+    message = (
+        "Agent passed TCP/UP. Solar8 would recruit."
+        if would_recruit
+        else f"Agent filtered: {tcp_up_result.get('status', 'unknown')}. Solar8 would not recruit."
+    )
+    return jsonify({
+        "status": "ok",
+        "agent_card": agent_card_data,
+        "tcp_up_result": tcp_up_result,
+        "would_recruit": would_recruit,
+        "message": message
+    })
+
+
+@app.route("/api/a2a/task", methods=["POST"])
+def a2a_task_send():
+    data = request.get_json(silent=True) or {}
+    agent_url = (data.get("agent_url") or "").strip().rstrip("/")
+    task = data.get("task") or {}
+    if not agent_url:
+        return jsonify({"status": "error", "message": "agent_url required."}), 400
+    if not task:
+        return jsonify({"status": "error", "message": "task required."}), 400
+
+    task_id = task.get("id") or str(uuid.uuid4())
+    message = task.get("message", "")
+    context = task.get("context", {})
+
+    agent_name = data.get("agent_name", agent_url)
+    banks.log_a2a_task(
+        task_id=task_id,
+        direction="outbound",
+        agent_name=agent_name,
+        agent_url=agent_url,
+        message=message,
+        response=None,
+        status="pending"
+    )
+
+    try:
+        endpoint = f"{agent_url}/api/a2a/task/receive"
+        payload = {
+            "from": "Solar8",
+            "from_url": "https://web-production-8b53fe.up.railway.app",
+            "task_id": task_id,
+            "message": message,
+            "context": context
+        }
+        resp = http_requests.post(endpoint, json=payload, timeout=30)
+        resp.raise_for_status()
+        remote_response = resp.json()
+        banks.log_a2a_task(
+            task_id=task_id,
+            direction="outbound",
+            agent_name=agent_name,
+            agent_url=agent_url,
+            message=message,
+            response=str(remote_response),
+            status="complete"
+        )
+        return jsonify({
+            "status": "ok",
+            "task_id": task_id,
+            "remote_response": remote_response
+        })
+    except http_requests.exceptions.Timeout:
+        banks.log_a2a_task(task_id=task_id, direction="outbound",
+                           agent_name=agent_name, agent_url=agent_url,
+                           message=message, response="timeout", status="error")
+        return jsonify({"status": "error", "task_id": task_id, "message": "Timeout sending task."}), 504
+    except Exception as e:
+        logger.error("a2a_task_send error: %s", e)
+        banks.log_a2a_task(task_id=task_id, direction="outbound",
+                           agent_name=agent_name, agent_url=agent_url,
+                           message=message, response=str(e), status="error")
+        return jsonify({"status": "error", "task_id": task_id, "message": str(e)}), 502
+
+
+@app.route("/api/a2a/task/receive", methods=["POST"])
+def a2a_task_receive():
+    data = request.get_json(silent=True) or {}
+    from_agent = data.get("from", "unknown")
+    from_url = data.get("from_url", "")
+    task_id = data.get("task_id") or str(uuid.uuid4())
+    message = (data.get("message") or "").strip()
+    if not message:
+        return jsonify({"status": "error", "message": "message required."}), 400
+
+    banks.log_a2a_task(
+        task_id=task_id,
+        direction="inbound",
+        agent_name=from_agent,
+        agent_url=from_url,
+        message=message,
+        response=None,
+        status="pending"
+    )
+
+    try:
+        if solar8.online:
+            response_text = solar8.chat(message=message, history=[])
+        else:
+            response_text = "Solar8 offline — API key not configured."
+        banks.log_a2a_task(
+            task_id=task_id,
+            direction="inbound",
+            agent_name=from_agent,
+            agent_url=from_url,
+            message=message,
+            response=response_text,
+            status="complete"
+        )
+        return jsonify({
+            "status": "ok",
+            "task_id": task_id,
+            "from": "Solar8",
+            "response": response_text
+        })
+    except Exception as e:
+        logger.error("a2a_task_receive error: %s", e)
+        banks.log_a2a_task(task_id=task_id, direction="inbound",
+                           agent_name=from_agent, agent_url=from_url,
+                           message=message, response=str(e), status="error")
+        return jsonify({"status": "error", "task_id": task_id, "message": str(e)}), 500
+
+
+@app.route("/api/a2a/tasks")
+def a2a_tasks_list():
+    try:
+        tasks = banks.get_a2a_tasks(limit=50)
+        return jsonify({"status": "ok", "count": len(tasks), "tasks": [dict(t) for t in tasks]})
+    except Exception as e:
+        logger.error("a2a_tasks_list error: %s", e)
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 if __name__ == "__main__":
