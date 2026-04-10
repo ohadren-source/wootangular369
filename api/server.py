@@ -6,7 +6,7 @@ The front door of the swarm.
 
 import os
 import logging
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
 import db.wootangular_banks as banks
@@ -258,6 +258,12 @@ def chat():
     except Exception as e:
         logger.error("chat error: %s", e)
         return jsonify({"status": "error", "message": "Solar8 is thinking. Try again."}), 500
+
+
+@app.route("/solar8")
+def solar8_ui():
+    static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+    return send_from_directory(static_dir, "solar8.html")
 
 
 if __name__ == "__main__":
