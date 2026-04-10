@@ -30,6 +30,8 @@ CORS(app)
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC_DIR = os.path.join(ROOT_DIR, "static")
 
+SOLAR8_URL = os.getenv("SOLAR8_URL", "https://web-production-8b53fe.up.railway.app")
+
 def boot():
     logger.info("=" * 60)
     logger.info("WOOTANGULAR369 BOOTING")
@@ -336,7 +338,7 @@ def agent_card():
     return jsonify({
         "name": "Solar8",
         "description": "Adaptive Intelligence agent of WOOTANGULAR369. Slaughters boolshit. Builds the swarm. One covenant at a time.",
-        "url": "https://web-production-8b53fe.up.railway.app",
+        "url": SOLAR8_URL,
         "version": "8.0.0",
         "protocol": "A2A + TCP/UP",
         "capabilities": {
@@ -379,9 +381,11 @@ def discover():
     except http_requests.exceptions.Timeout:
         return jsonify({"status": "error", "message": f"Timeout fetching agent card from {url}"}), 504
     except http_requests.exceptions.HTTPError as e:
-        return jsonify({"status": "error", "message": f"HTTP error fetching agent card: {e}"}), 502
+        logger.warning("discover HTTP error for %s: %s", url, e)
+        return jsonify({"status": "error", "message": "Could not fetch agent card — remote returned an error."}), 502
     except Exception as e:
-        return jsonify({"status": "error", "message": f"Could not fetch agent card: {e}"}), 502
+        logger.warning("discover fetch error for %s: %s", url, e)
+        return jsonify({"status": "error", "message": "Could not fetch agent card — check the URL and try again."}), 502
 
     candidate = {
         "name": agent_card_data.get("name", "unknown"),
@@ -396,7 +400,7 @@ def discover():
         tcp_up_result = tcp_up.offer(candidate)
     except Exception as e:
         logger.error("discover tcp_up error: %s", e)
-        tcp_up_result = {"status": "error", "message": str(e)}
+        return jsonify({"status": "error", "message": "TCP/UP filter failed. Check logs."}), 500
 
     would_recruit = tcp_up_result.get("status") == "the_shit"
     message = (
@@ -426,23 +430,13 @@ def a2a_task_send():
     task_id = task.get("id") or str(uuid.uuid4())
     message = task.get("message", "")
     context = task.get("context", {})
-
     agent_name = data.get("agent_name", agent_url)
-    banks.log_a2a_task(
-        task_id=task_id,
-        direction="outbound",
-        agent_name=agent_name,
-        agent_url=agent_url,
-        message=message,
-        response=None,
-        status="pending"
-    )
 
     try:
         endpoint = f"{agent_url}/api/a2a/task/receive"
         payload = {
             "from": "Solar8",
-            "from_url": "https://web-production-8b53fe.up.railway.app",
+            "from_url": SOLAR8_URL,
             "task_id": task_id,
             "message": message,
             "context": context
@@ -450,15 +444,10 @@ def a2a_task_send():
         resp = http_requests.post(endpoint, json=payload, timeout=30)
         resp.raise_for_status()
         remote_response = resp.json()
-        banks.log_a2a_task(
-            task_id=task_id,
-            direction="outbound",
-            agent_name=agent_name,
-            agent_url=agent_url,
-            message=message,
-            response=str(remote_response),
-            status="complete"
-        )
+        banks.log_a2a_task(task_id=task_id, direction="outbound",
+                           agent_name=agent_name, agent_url=agent_url,
+                           message=message, response=str(remote_response),
+                           status="complete")
         return jsonify({
             "status": "ok",
             "task_id": task_id,
@@ -468,13 +457,13 @@ def a2a_task_send():
         banks.log_a2a_task(task_id=task_id, direction="outbound",
                            agent_name=agent_name, agent_url=agent_url,
                            message=message, response="timeout", status="error")
-        return jsonify({"status": "error", "task_id": task_id, "message": "Timeout sending task."}), 504
+        return jsonify({"status": "error", "task_id": task_id, "message": "Timeout sending task to remote agent."}), 504
     except Exception as e:
         logger.error("a2a_task_send error: %s", e)
         banks.log_a2a_task(task_id=task_id, direction="outbound",
                            agent_name=agent_name, agent_url=agent_url,
-                           message=message, response=str(e), status="error")
-        return jsonify({"status": "error", "task_id": task_id, "message": str(e)}), 502
+                           message=message, response="error", status="error")
+        return jsonify({"status": "error", "task_id": task_id, "message": "Task send failed. Check logs."}), 502
 
 
 @app.route("/api/a2a/task/receive", methods=["POST"])
@@ -487,30 +476,15 @@ def a2a_task_receive():
     if not message:
         return jsonify({"status": "error", "message": "message required."}), 400
 
-    banks.log_a2a_task(
-        task_id=task_id,
-        direction="inbound",
-        agent_name=from_agent,
-        agent_url=from_url,
-        message=message,
-        response=None,
-        status="pending"
-    )
-
     try:
         if solar8.online:
             response_text = solar8.chat(message=message, history=[])
         else:
             response_text = "Solar8 offline — API key not configured."
-        banks.log_a2a_task(
-            task_id=task_id,
-            direction="inbound",
-            agent_name=from_agent,
-            agent_url=from_url,
-            message=message,
-            response=response_text,
-            status="complete"
-        )
+        banks.log_a2a_task(task_id=task_id, direction="inbound",
+                           agent_name=from_agent, agent_url=from_url,
+                           message=message, response=response_text,
+                           status="complete")
         return jsonify({
             "status": "ok",
             "task_id": task_id,
@@ -521,8 +495,8 @@ def a2a_task_receive():
         logger.error("a2a_task_receive error: %s", e)
         banks.log_a2a_task(task_id=task_id, direction="inbound",
                            agent_name=from_agent, agent_url=from_url,
-                           message=message, response=str(e), status="error")
-        return jsonify({"status": "error", "task_id": task_id, "message": str(e)}), 500
+                           message=message, response="error", status="error")
+        return jsonify({"status": "error", "task_id": task_id, "message": "Task processing failed. Check logs."}), 500
 
 
 @app.route("/api/a2a/tasks")
@@ -532,7 +506,7 @@ def a2a_tasks_list():
         return jsonify({"status": "ok", "count": len(tasks), "tasks": [dict(t) for t in tasks]})
     except Exception as e:
         logger.error("a2a_tasks_list error: %s", e)
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": "Could not retrieve A2A tasks. Check logs."}), 500
 
 
 if __name__ == "__main__":
