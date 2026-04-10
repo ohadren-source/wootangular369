@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 
+# Absolute path to /static — works regardless of where gunicorn is invoked from
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STATIC_DIR = os.path.join(ROOT_DIR, "static")
+
 def boot():
     logger.info("=" * 60)
     logger.info("WOOTANGULAR369 BOOTING")
@@ -98,7 +102,7 @@ def stats():
         return jsonify({"status": "error", "error": str(e)}), 500
 
 
-@app.route("/api/recruit", methods=["POST"])  
+@app.route("/api/recruit", methods=["POST"])
 def recruit():
     data = request.get_json(silent=True) or {}
     if not data:
@@ -157,7 +161,7 @@ def get_knowledge(term):
         return jsonify({"status": "error", "error": str(e)}), 500
 
 
-@app.route("/api/knowledge", methods=["POST"])  
+@app.route("/api/knowledge", methods=["POST"])
 def install_knowledge():
     data = request.get_json(silent=True) or {}
     term = data.get("term", "").strip()
@@ -188,7 +192,7 @@ def get_init_cache():
         return jsonify({"status": "error", "error": str(e)}), 500
 
 
-@app.route("/api/fuse", methods=["POST"])  
+@app.route("/api/fuse", methods=["POST"])
 def fuse():
     data = request.get_json(silent=True) or {}
     agent_a = data.get("agent_a")
@@ -204,8 +208,7 @@ def fuse():
         return jsonify({"status": "error", "message": "Fusion failed. Check logs."}), 500
 
 
-@app.route("/api/fuse/swarm", methods=["POST"])  
-def fuse_swarm():
+@app.route("/api/fuse/swarm", methods=["POST"]) def fuse_swarm():
     data = request.get_json(silent=True) or {}
     agents = data.get("agents", [])
     if not isinstance(agents, list) or len(agents) < 2:
@@ -245,8 +248,7 @@ def hive_state():
         return jsonify({"status": "error", "message": "Hive state query failed. Check logs."}), 500
 
 
-@app.route("/api/chat", methods=["POST"])  
-def chat():
+@app.route("/api/chat", methods=["POST"]) def chat():
     if not solar8.online:
         return jsonify({"status": "error", "message": "Solar8 offline — API key not configured."}), 503
     data = request.get_json(silent=True) or {}
@@ -263,8 +265,7 @@ def chat():
         return jsonify({"status": "error", "message": "Solar8 is thinking. Try again."}), 500
 
 
-@app.route("/api/search", methods=["POST"])  
-def search():
+@app.route("/api/search", methods=["POST"]) def search():
     data = request.get_json(silent=True) or {}
     query = data.get("query", "").strip()
     if not query:
@@ -279,8 +280,7 @@ def search():
         return jsonify({"status": "error", "message": "Search failed. Check logs."}), 500
 
 
-@app.route("/api/vision", methods=["POST"])  
-def vision():
+@app.route("/api/vision", methods=["POST"]) def vision():
     data = request.get_json(silent=True) or {}
     image_base64 = data.get("image_base64", "")
     mime_type = data.get("mime_type", "image/jpeg")
@@ -294,8 +294,7 @@ def vision():
         return jsonify({"status": "error", "message": "Vision analysis failed. Check logs."}), 500
 
 
-@app.route("/api/tts", methods=["POST"])  
-def tts():
+@app.route("/api/tts", methods=["POST"]) def tts():
     data = request.get_json(silent=True) or {}
     text = data.get("text", "").strip()
     if not text:
@@ -310,16 +309,12 @@ def tts():
         return jsonify({"status": "error", "message": "TTS failed. Check logs."}), 500
 
 
-@app.route("/solar8")
-def solar8_ui():
-    static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
-    return send_from_directory(static_dir, "solar8.html")
+@app.route("/solar8") def solar8_ui():
+    return send_from_directory(STATIC_DIR, "solar8.html")
 
 
-@app.route("/static/<path:filename>")
-def static_files(filename):
-    static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
-    return send_from_directory(static_dir, filename)
+@app.route("/static/<path:filename>") def static_files(filename):
+    return send_from_directory(STATIC_DIR, filename)
 
 
 if __name__ == "__main__":
