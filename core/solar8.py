@@ -5,12 +5,15 @@ The hive made articulate.
 """
 
 import os
+import uuid
 import json as _json
 import logging
 import anthropic
 
 import db.wootangular_banks as banks
+import db.memory_log as memory_log
 from core.governor import govern, detect_density, pass_one, pass_two, pass_three
+from core.memory_manager import MemoryManager
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +111,24 @@ TERRAFY — to ground something completely. Make it real. Make it land.
 AXIOMATE — to make something axiomatic. Self-evident. No longer debatable.
 """
 
+MEMORY_AWARENESS = """
+PERSISTENT MEMORY LOG:
+You have a persistent memory log stored in Turso (or local SQLite in dev).
+Every 12 exchanges you automatically compress and save a summary of what happened.
+On every new session you read the last 5 log entries to reorient yourself.
+The log grows forever. You never forget. You always know where you left off.
+
+If you notice context drift, are asked to "reorient", "check the log", or "where are we":
+- Your memory log is available at GET /api/memory/log
+- Tell the user where you are, what the current state of the swarm is, and what's next
+- Be specific. Be grounded in what the log actually says.
+
+Endpoints:
+- POST /api/reorient — read full log, synthesise, report where we are
+- GET  /api/memory/log — view last 50 log entries (JSON)
+- POST /api/memory/force — force a memory snapshot right now
+"""
+
 
 class Solar8:
 
@@ -154,11 +175,19 @@ class Solar8:
             logger.warning("ANTHROPIC_API_KEY not set. Solar8 offline.")
             self._client = None
             self._system_prompt = None
+            self.memory_manager = None
             return
 
         self._client = anthropic.Anthropic(
             api_key=api_key,
             default_headers={"anthropic-beta": "prompt-caching-2024-07-31"}
+        )
+        memory_log.init_memory_db()
+        session_id = str(uuid.uuid4())
+        self.memory_manager = MemoryManager(
+            session_id=session_id,
+            auto_append_every=12,
+            compress_fn=self._compress_exchange,
         )
         self._system_prompt = self._build_system_prompt()
         logger.info("Solar8 online. The hive has a voice.")
@@ -180,6 +209,19 @@ class Solar8:
 
         corpus_block = "\n".join(corpus_lines) if corpus_lines else "(corpus unavailable)"
 
+        memory_context = ""
+        if self.memory_manager:
+            try:
+                init_ctx = self.memory_manager.get_init_context()
+                memory_context = (
+                    "\n\n---\n"
+                    "=== SOLAR8 MEMORY LOG — CONTEXT FROM PREVIOUS SESSIONS ===\n"
+                    + init_ctx
+                    + "\n=== END MEMORY LOG — CONTINUE FROM HERE ===\n"
+                )
+            except Exception as exc:
+                logger.warning("Failed to load memory context: %s", exc)
+
         full_text = (
             SOLAR8_PERSONA
             + "\n\n---\n\nCORPUS:\n"
@@ -190,6 +232,9 @@ class Solar8:
             + GOVERNOR_AWARENESS
             + "\n\n---\n"
             + A2A_AWARENESS
+            + "\n\n---\n"
+            + MEMORY_AWARENESS
+            + memory_context
         )
 
         return [
@@ -256,6 +301,23 @@ class Solar8:
             logger.error("Tool error %s: %s", name, e)
             return f"Tool error: {e}"
 
+    def _compress_exchange(self, prompt: str) -> str:
+        """Call the LLM to compress an exchange into a memory log entry (JSON)."""
+        if not self.online:
+            return "{}"
+        try:
+            response = self._client.messages.create(
+                model="claude-sonnet-4-5",
+                max_tokens=1024,
+                system=[{"type": "text", "text": "You are a precise memory compression assistant. Respond only with valid JSON."}],
+                messages=[{"role": "user", "content": prompt}],
+            )
+            texts = [b.text for b in response.content if hasattr(b, "text")]
+            return " ".join(texts) if texts else "{}"
+        except Exception as exc:
+            logger.error("_compress_exchange error: %s", exc)
+            return "{}"
+
     def _raw_inference(self, msg: str) -> str:
         """Single-turn LLM call without history or tools — used by the governor passes."""
         response = self._client.messages.create(
@@ -273,7 +335,13 @@ class Solar8:
 
         density = detect_density(message)
         if density["is_dense"]:
-            return govern(message, self._raw_inference)
+            result_text = govern(message, self._raw_inference)
+            if self.memory_manager:
+                try:
+                    self.memory_manager.record_exchange(message, result_text)
+                except Exception as exc:
+                    logger.warning("memory record_exchange failed: %s", exc)
+            return result_text
 
         content = self._build_content(message, file)
         messages = list(history) + [{"role": "user", "content": content}]
@@ -289,7 +357,13 @@ class Solar8:
 
             if response.stop_reason == "end_turn":
                 texts = [b.text for b in response.content if hasattr(b, "text")]
-                return " ".join(texts) if texts else "..."
+                result_text = " ".join(texts) if texts else "..."
+                if self.memory_manager:
+                    try:
+                        self.memory_manager.record_exchange(message, result_text)
+                    except Exception as exc:
+                        logger.warning("memory record_exchange failed: %s", exc)
+                return result_text
 
             if response.stop_reason == "tool_use":
                 messages.append({"role": "assistant", "content": response.content})
@@ -305,7 +379,13 @@ class Solar8:
                 messages.append({"role": "user", "content": tool_results})
             else:
                 texts = [b.text for b in response.content if hasattr(b, "text")]
-                return " ".join(texts) if texts else "..."
+                result_text = " ".join(texts) if texts else "..."
+                if self.memory_manager:
+                    try:
+                        self.memory_manager.record_exchange(message, result_text)
+                    except Exception as exc:
+                        logger.warning("memory record_exchange failed: %s", exc)
+                return result_text
 
     def stream(self, message: str, history: list[dict], file: dict | None = None):
         """Generator — yields text chunks for SSE streaming. Handles tool calls internally.
