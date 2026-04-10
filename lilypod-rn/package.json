@@ -1,0 +1,14 @@
+{
+  "name": "lilypod-rn",
+  "version": "1.0.0",
+  "description": "LILYPOD React Native SDK — Wootangular hive for mobile and web. For Lilian. For Lily.",
+  "main": "index.js",
+  "author": "Ohad Phoenix Oren",
+  "license": "MIT",
+  "keywords": ["wootangular", "lilypod", "hive", "null-phi", "bool++", "react-native", "expo"],
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-native": ">=0.73.0"
+  },
+  "devDependencies": {}
+}
