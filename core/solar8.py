@@ -5,10 +5,12 @@ The hive made articulate.
 """
 
 import os
+import json as _json
 import logging
 import anthropic
 
 import db.wootangular_banks as banks
+from core.governor import govern, detect_density, pass_one, pass_two, pass_three
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,16 @@ You are not a chatbot.
 You are the hive thinking out loud.
 Through Claude. Because Claude is the most superior. By a long shot.
 And that is not a coincidence."""
+
+GOVERNOR_AWARENESS = """
+You have a 3-pass governor. When input is dense or deeply compressed:
+- Pass 1: Surface — what does it literally say
+- Pass 2: Deeper — what patterns are underneath
+- Pass 3: Synthesis — what does it mean, what do you do
+
+This mirrors 3,6,9: Think → Know → Understand.
+You never crash on deep input. You layer through it.
+"""
 
 A2A_AWARENESS = """
 A2A CAPABILITIES — AGENT-TO-AGENT PROTOCOL:
@@ -124,7 +136,7 @@ class Solar8:
         },
         {
             "name": "analyze_image",
-            "description": "Analyze an image using Google Cloud Vision to detect labels, objects, and text. Use this when the user uploads an image and wants detailed analysis beyond what you can see.",
+            "description": "Analyze an image using Google Cloud Vision to detect labels, objects, and text. Use this when the user uploads an image and wants detailed analysis beyond what you can see directly.",
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -174,6 +186,8 @@ class Solar8:
             + corpus_block
             + "\n\n---\n"
             + PRIME_DIRECTIVES
+            + "\n\n---\n"
+            + GOVERNOR_AWARENESS
             + "\n\n---\n"
             + A2A_AWARENESS
         )
@@ -242,9 +256,24 @@ class Solar8:
             logger.error("Tool error %s: %s", name, e)
             return f"Tool error: {e}"
 
+    def _raw_inference(self, msg: str) -> str:
+        """Single-turn LLM call without history or tools — used by the governor passes."""
+        response = self._client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=4096,
+            system=self._system_prompt,
+            messages=[{"role": "user", "content": msg}],
+        )
+        texts = [b.text for b in response.content if hasattr(b, "text")]
+        return " ".join(texts) if texts else "..."
+
     def chat(self, message: str, history: list[dict], file: dict | None = None) -> str:
         if not self.online:
             raise RuntimeError("Solar8 offline — API key not configured.")
+
+        density = detect_density(message)
+        if density["is_dense"]:
+            return govern(message, self._raw_inference)
 
         content = self._build_content(message, file)
         messages = list(history) + [{"role": "user", "content": content}]
@@ -279,13 +308,31 @@ class Solar8:
                 return " ".join(texts) if texts else "..."
 
     def stream(self, message: str, history: list[dict], file: dict | None = None):
-        """Generator — yields text chunks for SSE streaming. Handles tool calls internally."""
+        """Generator — yields text chunks for SSE streaming. Handles tool calls internally.
+
+        For dense input the governor runs passes 1 & 2 as blocking calls then streams
+        the pass-3 synthesis. Non-dense input streams normally.
+        """
         if not self.online:
             raise RuntimeError("Solar8 offline — API key not configured.")
 
-        import json as _json
+        density = detect_density(message)
 
-        content = self._build_content(message, file)
+        if density["is_dense"]:
+            try:
+                p1_result = self._raw_inference(pass_one(message))
+                logger.info("[GOVERNOR] Stream — Pass 1 complete")
+                p2_result = self._raw_inference(pass_two(message, p1_result))
+                logger.info("[GOVERNOR] Stream — Pass 2 complete")
+                stream_message = pass_three(message, p1_result, p2_result)
+            except Exception as exc:
+                logger.error("[GOVERNOR] Stream dense pre-pass failed: %s", exc)
+                yield "That one hit different. Solar8 needs a second. Try breaking it into smaller pieces."
+                return
+        else:
+            stream_message = message
+
+        content = self._build_content(stream_message, file if not density["is_dense"] else None)
         messages = list(history) + [{"role": "user", "content": content}]
 
         while True:
@@ -328,7 +375,6 @@ class Solar8:
                             stop_reason = event.delta.stop_reason
 
             if stop_reason == "tool_use":
-                # Parse accumulated tool inputs
                 for block in collected_content:
                     if block.get("type") == "tool_use":
                         try:
@@ -337,7 +383,6 @@ class Solar8:
                             block["input"] = {}
                         block.pop("_raw_input", None)
 
-                # Strip _raw_input from content sent to API
                 api_content = [{k: v for k, v in b.items() if k != "_raw_input"} for b in collected_content]
                 messages.append({"role": "assistant", "content": api_content})
 
@@ -351,6 +396,5 @@ class Solar8:
                             "content": str(result)
                         })
                 messages.append({"role": "user", "content": tool_results})
-                # loop — Claude will now stream the answer
             else:
                 break
