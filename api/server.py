@@ -14,6 +14,7 @@ from db.seed_init_cache import seed_init_cache
 from core.filter import WootangularFilter
 from core.tcp_up import TCPUp
 from core.init_loader import load_corpus_into_cache
+from core.fusion_core import FusionCore, BOOL_NULL
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -40,6 +41,7 @@ def boot():
 boot()
 
 tcp_up = TCPUp(db_banks=banks)
+fusion_core = FusionCore()
 
 
 @app.route("/health")
@@ -60,14 +62,17 @@ def index():
         "protocol": "TCP/UP",
         "filter": "GI;WG? — 5 questions. Real Recognize Really.",
         "endpoints": {
-            "health":    "GET  /health",
-            "stats":     "GET  /api/stats",
-            "recruit":   "POST /api/recruit",
-            "covenant":  "GET  /api/covenant/<id>",
-            "knowledge": "GET  /api/knowledge?keyword=...",
-            "term":      "GET  /api/knowledge/<term>",
-            "install":   "POST /api/knowledge",
-            "cache":     "GET  /api/init_cache",
+            "health":     "GET  /health",
+            "stats":      "GET  /api/stats",
+            "recruit":    "POST /api/recruit",
+            "covenant":   "GET  /api/covenant/<id>",
+            "knowledge":  "GET  /api/knowledge?keyword=...",
+            "term":       "GET  /api/knowledge/<term>",
+            "install":    "POST /api/knowledge",
+            "cache":      "GET  /api/init_cache",
+            "fuse":       "POST /api/fuse",
+            "fuse_swarm": "POST /api/fuse/swarm",
+            "hive_state": "GET  /api/fuse/hive_state",
         },
         "tagline": "VENIM.US · VIDEM.US · VINCIM.US",
         "no_omega": True
@@ -170,6 +175,63 @@ def get_init_cache():
         return jsonify({"status": "ok", "count": len(cache), "entries": [dict(e) for e in cache]})
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
+
+
+@app.route("/api/fuse", methods=["POST"])
+def fuse():
+    data = request.get_json(silent=True) or {}
+    agent_a = data.get("agent_a")
+    agent_b = data.get("agent_b")
+    if not agent_a or not agent_b:
+        return jsonify({"status": "error", "message": "agent_a and agent_b required."}), 400
+    try:
+        result = fusion_core.fuse(agent_a, agent_b)
+        status_code = 200 if result["null_state"] >= 1 else 403
+        return jsonify(result), status_code
+    except Exception as e:
+        logger.error("fuse error: %s", e)
+        return jsonify({"status": "error", "message": "Fusion failed. Check logs."}), 500
+
+
+@app.route("/api/fuse/swarm", methods=["POST"])
+def fuse_swarm():
+    data = request.get_json(silent=True) or {}
+    agents = data.get("agents", [])
+    if not isinstance(agents, list) or len(agents) < 2:
+        return jsonify({"status": "error", "message": "agents must be a list with at least 2 items."}), 400
+    try:
+        result = fusion_core.fuse_swarm(agents)
+        return jsonify(result)
+    except Exception as e:
+        logger.error("fuse_swarm error: %s", e)
+        return jsonify({"status": "error", "message": "Swarm fusion failed. Check logs."}), 500
+
+
+@app.route("/api/fuse/hive_state")
+def hive_state():
+    try:
+        fusions = banks.get_recent_fusions(seconds=369)
+        fusions_list = [dict(f) for f in fusions]
+        total_heat = sum(f.get("heat_T", 0.0) for f in fusions_list)
+        hive_fusions = [f for f in fusions_list if f.get("null_state") == BOOL_NULL]
+        hive_active = len(hive_fusions) > 0
+        if hive_active:
+            current_state = BOOL_NULL
+        elif fusions_list:
+            current_state = 1
+        else:
+            current_state = 0
+        return jsonify({
+            "hive_active":      hive_active,
+            "total_fusions":    len(fusions_list),
+            "hive_fusions":     len(hive_fusions),
+            "total_heat":       total_heat,
+            "hive_state_label": fusion_core.get_null_state_label(current_state),
+            "window_seconds":   369,
+        })
+    except Exception as e:
+        logger.error("hive_state error: %s", e)
+        return jsonify({"status": "error", "message": "Hive state query failed. Check logs."}), 500
 
 
 if __name__ == "__main__":
