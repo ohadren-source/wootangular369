@@ -115,11 +115,44 @@ class Solar8:
     def online(self) -> bool:
         return self._client is not None
 
-    def chat(self, message: str, history: list[dict]) -> str:
+    def chat(self, message: str, history: list[dict], file: dict | None = None) -> str:
         if not self.online:
             raise RuntimeError("Solar8 offline — API key not configured.")
 
-        messages = list(history) + [{"role": "user", "content": message}]
+        if file:
+            mime = file.get("mime_type", "")
+            if mime.startswith("image/"):
+                user_content = [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": mime,
+                            "data": file["data"],
+                        },
+                    },
+                    {"type": "text", "text": message},
+                ]
+            elif mime == "application/pdf":
+                user_content = [
+                    {
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "application/pdf",
+                            "data": file["data"],
+                        },
+                    },
+                    {"type": "text", "text": message},
+                ]
+            elif file.get("is_text"):
+                user_content = f"[FILE: {file['name']}]\n{file['data']}\n\n{message}"
+            else:
+                user_content = message
+        else:
+            user_content = message
+
+        messages = list(history) + [{"role": "user", "content": user_content}]
 
         response = self._client.messages.create(
             model="claude-sonnet-4-5",
