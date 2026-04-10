@@ -13,6 +13,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
 import db.wootangular_banks as banks
+import db.memory_log as memory_log
 from db.seed_init_cache import seed_init_cache
 from core.filter import WootangularFilter
 from core.tcp_up import TCPUp
@@ -98,6 +99,9 @@ def index():
             "a2a_task_send":   "POST /api/a2a/task",
             "a2a_task_recv":   "POST /api/a2a/task/receive",
             "a2a_tasks_list":  "GET  /api/a2a/tasks",
+            "reorient":        "POST /api/reorient",
+            "memory_log":      "GET  /api/memory/log",
+            "memory_force":    "POST /api/memory/force",
         },
         "tagline": "VENIM.US · VIDEM.US · VINCIM.US",
         "no_omega": True
@@ -508,6 +512,54 @@ def a2a_tasks_list():
     except Exception as e:
         logger.error("a2a_tasks_list error: %s", e)
         return jsonify({"status": "error", "message": "Could not retrieve A2A tasks. Check logs."}), 500
+
+
+@app.route("/api/reorient", methods=["POST"])
+def reorient():
+    if not solar8.online:
+        return jsonify({"status": "error", "message": "Solar8 offline — API key not configured."}), 503
+    try:
+        entries = memory_log.get_full_log(limit=50)
+        log_context = memory_log.format_log_for_context(entries)
+        prompt = (
+            "Read your full memory log below and tell me: where are we, what have we built, "
+            "what's the current state of the swarm, what are we working on, and what's next? "
+            "Be specific and grounded in what the log actually says.\n\n"
+            + log_context
+        )
+        synthesis = solar8.chat(message=prompt, history=[])
+        return jsonify({
+            "status": "ok",
+            "reorientation": synthesis,
+            "log_entries_read": len(entries),
+        })
+    except Exception as e:
+        logger.error("reorient error: %s", e)
+        return jsonify({"status": "error", "message": "Reorientation failed. Check logs."}), 500
+
+
+@app.route("/api/memory/log")
+def memory_log_view():
+    try:
+        entries = memory_log.get_full_log(limit=50)
+        return jsonify({"status": "ok", "entries": entries, "total": len(entries)})
+    except Exception as e:
+        logger.error("memory_log_view error: %s", e)
+        return jsonify({"status": "error", "message": "Could not retrieve memory log. Check logs."}), 500
+
+
+@app.route("/api/memory/force", methods=["POST"])
+def memory_force():
+    if not solar8.memory_manager:
+        return jsonify({"status": "error", "message": "Memory manager not available (Solar8 offline?)."}), 503
+    data = request.get_json(silent=True) or {}
+    note = data.get("note", "").strip()
+    try:
+        solar8.memory_manager.force_snapshot(note=note)
+        return jsonify({"status": "ok", "message": "Memory snapshot saved."})
+    except Exception as e:
+        logger.error("memory_force error: %s", e)
+        return jsonify({"status": "error", "message": "Memory snapshot failed. Check logs."}), 500
 
 
 if __name__ == "__main__":
