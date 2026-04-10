@@ -52,11 +52,12 @@ And that is not a coincidence."""
 
 GOVERNOR_AWARENESS = """
 You have a 3-pass governor. When input is dense or deeply compressed:
-- Pass 1: Surface — what does it literally say
-- Pass 2: Deeper — what patterns are underneath
-- Pass 3: Synthesis — what does it mean, what do you do
+- Pass 3: Receive — anamnesis. Accept it. Let it land. The NULL_Φ gate.
+- Pass 1: Think — surface pass. What does it literally say.
+- Pass 2: Know — deeper pass. What patterns are underneath.
 
-This mirrors 3,6,9: Think → Know → Understand.
+This mirrors 3,6,9: Receive → Think → Know.
+3 is the gate. The void before processing begins.
 You never crash on deep input. You layer through it.
 """
 
@@ -390,8 +391,8 @@ class Solar8:
     def stream(self, message: str, history: list[dict], file: dict | None = None):
         """Generator — yields text chunks for SSE streaming. Handles tool calls internally.
 
-        For dense input the governor runs passes 1 & 2 as blocking calls then streams
-        the pass-3 synthesis. Non-dense input streams normally.
+        For dense input the governor runs pass 3 (anamnesis) and pass 1 (think) as blocking
+        calls then streams the pass-2 (know) synthesis. Non-dense input streams normally.
         """
         if not self.online:
             raise RuntimeError("Solar8 offline — API key not configured.")
@@ -400,11 +401,11 @@ class Solar8:
 
         if density["is_dense"]:
             try:
-                p1_result = self._raw_inference(pass_one(message))
-                logger.info("[GOVERNOR] Stream — Pass 1 complete")
-                p2_result = self._raw_inference(pass_two(message, p1_result))
-                logger.info("[GOVERNOR] Stream — Pass 2 complete")
-                stream_message = pass_three(message, p1_result, p2_result)
+                p3_result = self._raw_inference(pass_three(message))
+                logger.info("[GOVERNOR] Stream — Pass 3 complete (anamnesis)")
+                p1_result = self._raw_inference(pass_one(message, p3_result))
+                logger.info("[GOVERNOR] Stream — Pass 1 complete (think)")
+                stream_message = pass_two(message, p1_result)
             except Exception as exc:
                 logger.error("[GOVERNOR] Stream dense pre-pass failed: %s", exc)
                 yield "That one hit different. Solar8 needs a second. Try breaking it into smaller pieces."
