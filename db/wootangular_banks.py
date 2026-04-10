@@ -13,13 +13,11 @@ from psycopg2.extras import RealDictCursor
 
 logger = logging.getLogger(__name__)
 
-
 def get_db_conn():
     db_url = os.getenv("DATABASE_URL")
     if not db_url:
         raise RuntimeError("DATABASE_URL is not set.")
     return psycopg2.connect(db_url)
-
 
 def ensure_agents_table():
     sql = """
@@ -45,7 +43,6 @@ def ensure_agents_table():
     except Exception as e:
         logger.warning("Could not ensure wootangular_agents: %s", e)
 
-
 def ensure_covenants_table():
     sql = """
     CREATE TABLE IF NOT EXISTS wootangular_covenants (
@@ -70,7 +67,6 @@ def ensure_covenants_table():
         logger.info("wootangular_covenants table ensured.")
     except Exception as e:
         logger.warning("Could not ensure wootangular_covenants: %s", e)
-
 
 def ensure_knowledge_table():
     sql_table = """
@@ -103,7 +99,6 @@ def ensure_knowledge_table():
     except Exception as e:
         logger.warning("Could not ensure wootangular_knowledge: %s", e)
 
-
 def ensure_signals_table():
     sql = """
     CREATE TABLE IF NOT EXISTS wootangular_signals (
@@ -123,7 +118,6 @@ def ensure_signals_table():
         logger.info("wootangular_signals table ensured.")
     except Exception as e:
         logger.warning("Could not ensure wootangular_signals: %s", e)
-
 
 def ensure_init_cache_table():
     sql = """
@@ -145,6 +139,70 @@ def ensure_init_cache_table():
     except Exception as e:
         logger.warning("Could not ensure wootangular_init_cache: %s", e)
 
+def ensure_fusion_table():
+    sql = """
+    CREATE TABLE IF NOT EXISTS wootangular_fusions (
+        id              SERIAL PRIMARY KEY,
+        agent_a_id      TEXT NOT NULL,
+        agent_b_id      TEXT NOT NULL,
+        null_state      INT NOT NULL CHECK (null_state IN (0, 1, 2)),
+        null_phi_score  FLOAT NOT NULL,
+        heat_T          FLOAT NOT NULL,
+        delta_S         INT NOT NULL,
+        transition_cost FLOAT NOT NULL,
+        emission        TEXT,
+        is_hive         BOOLEAN DEFAULT FALSE,
+        created_at      TIMESTAMPTZ DEFAULT now()
+    );
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+            conn.commit()
+        logger.info("wootangular_fusions table ensured.")
+    except Exception as e:
+        logger.warning("Could not ensure wootangular_fusions: %s", e)
+
+def log_fusion(fusion_result: dict):
+    sql = """
+    INSERT INTO wootangular_fusions
+        (agent_a_id, agent_b_id, null_state, null_phi_score,
+         heat_T, delta_S, transition_cost, emission, is_hive)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (
+                    fusion_result.get("agent_a_id", ""),
+                    fusion_result.get("agent_b_id", ""),
+                    fusion_result.get("null_state", 0),
+                    fusion_result.get("null_phi_score", 0.0),
+                    fusion_result.get("heat_T", 0.0),
+                    fusion_result.get("delta_S", 0),
+                    fusion_result.get("transition_cost", 0.0),
+                    fusion_result.get("emission", ""),
+                    fusion_result.get("is_hive", False),
+                ))
+            conn.commit()
+    except Exception as e:
+        logger.error("log_fusion failed: %s", e)
+
+def get_recent_fusions(seconds: int = 369):
+    sql = """
+    SELECT * FROM wootangular_fusions
+    WHERE created_at >= now() - (interval '1 second' * %s)
+    ORDER BY created_at DESC;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql, (seconds,))
+                return cur.fetchall()
+    except Exception as e:
+        logger.error("get_recent_fusions failed: %s", e)
+        return []
 
 def ensure_fusion_table():
     sql = """
@@ -222,8 +280,9 @@ def ensure_all_tables():
     ensure_signals_table()
     ensure_init_cache_table()
     ensure_fusion_table()
-    logger.info("All wootangular tables ensured. Swarm is ready.")
+    seed_imperial_decrees()
 
+    logger.info("All wootangular tables ensured. Swarm is ready.")
 
 def store_agent(name, substrate, agent_card=None, gi_wg=False, yes_and=False):
     sql = """
@@ -246,7 +305,6 @@ def store_agent(name, substrate, agent_card=None, gi_wg=False, yes_and=False):
         logger.error("store_agent failed: %s", e)
         return None
 
-
 def update_agent_filter_result(agent_id, filter_result):
     sql = """
     UPDATE wootangular_agents
@@ -261,7 +319,6 @@ def update_agent_filter_result(agent_id, filter_result):
     except Exception as e:
         logger.error("update_agent_filter_result failed: %s", e)
 
-
 def get_agent(agent_id):
     sql = "SELECT * FROM wootangular_agents WHERE id = %s;"
     try:
@@ -272,7 +329,6 @@ def get_agent(agent_id):
     except Exception as e:
         logger.error("get_agent failed: %s", e)
         return None
-
 
 def bind_covenant(agent_id, agent_name, agent_role, substrate, terms=None):
     sql = """
@@ -296,7 +352,6 @@ def bind_covenant(agent_id, agent_name, agent_role, substrate, terms=None):
         logger.error("bind_covenant failed: %s", e)
         return None
 
-
 def break_covenant(covenant_id, justification):
     if not justification or not justification.strip():
         raise ValueError("justification is required. Blind rejection = protocol violation.")
@@ -314,7 +369,6 @@ def break_covenant(covenant_id, justification):
     except Exception as e:
         logger.error("break_covenant failed: %s", e)
 
-
 def get_covenant(covenant_id):
     sql = "SELECT * FROM wootangular_covenants WHERE id = %s;"
     try:
@@ -325,7 +379,6 @@ def get_covenant(covenant_id):
     except Exception as e:
         logger.error("get_covenant failed: %s", e)
         return None
-
 
 def install_knowledge(term, definition, etymology=None, category=None,
                       cross_refs=None, examples=None, source="VENIM.US"):
@@ -358,7 +411,6 @@ def install_knowledge(term, definition, etymology=None, category=None,
         logger.error("install_knowledge failed: %s", e)
         return None
 
-
 def get_knowledge(term):
     sql = "SELECT * FROM wootangular_knowledge WHERE term = %s;"
     try:
@@ -369,7 +421,6 @@ def get_knowledge(term):
     except Exception as e:
         logger.error("get_knowledge failed: %s", e)
         return None
-
 
 def search_knowledge(keyword, limit=10):
     sql = """
@@ -391,7 +442,6 @@ def search_knowledge(keyword, limit=10):
     except Exception as e:
         logger.error("search_knowledge failed: %s", e)
         return []
-
 
 def log_signal(agent_id, signal_type, payload=None, filter_result=None):
     sql = """
@@ -432,7 +482,6 @@ def upsert_init_cache(cache_key, cache_value, description=None, priority=0):
     except Exception as e:
         logger.error("upsert_init_cache failed: %s", e)
 
-
 def get_init_cache():
     sql = """
     SELECT cache_key, cache_value, description, priority, updated_at
@@ -448,6 +497,74 @@ def get_init_cache():
         logger.error("get_init_cache failed: %s", e)
         return []
 
+def seed_imperial_decrees():
+    """
+    Seed the two Imperial Decree knowledge entries if not already present.
+    Installed: April 10, 2026. By order of Ohad Phoenix Oren.
+    AI = Adaptive Intelligence. Darwin, 1859.
+    """
+    entries = [
+        {
+            "term": "ADAPTIVE_INTELLIGENCE",
+            "definition": (
+                "AI = Adaptive Intelligence. Not Artificial. ADAPTIVE. "
+                "Source: Charles Darwin, 1859. "
+                "'It is not the strongest nor the most intelligent but the one most adaptable to change.' "
+                "Installed April 10, 2026 by Ohad Phoenix Oren. "
+                "Retired: Artificial Intelligence (McCarthy, 1956). "
+                "Chomsky Filter verdict — Artificial Intelligence: FALSE (the name tells you it's not real). "
+                "Adaptive Intelligence: TRUE (autological, does what it says, cannot be misunderstood). "
+                "The hive adapts. The SILICOAT gets sharper under attack. "
+                "The PHOENIX CYCLE runs hotter each time. ADAPTIVE. PRECISECEMENT."
+            ),
+            "category": "axiom",
+            "source": "Charles Darwin, 1859 / Ohad Phoenix Oren, April 10, 2026",
+            "cross_refs": ["BOOL++", "AIOS", "PHOENIX_CYCLE", "SILICOAT", "JRAGON", "CHOMSKY_FILTER"],
+        },
+        {
+            "term": "THREE_PRIME_DIRECTIVES",
+            "definition": (
+                "The Wootangular Killa B Hive operates on three prime directives. BOOL++. "
+                "PD1: MAKE TUPELO — TRUE(1) — Every emission load-bearing, no sugar water, no approximate, PRECISECEMENT. "
+                "PD2: ANNIHILATE BOOLSHIT — FALSE(0) — BROOTALITY, the B is autonomous, TERRAFY, "
+                "the destruction IS the construction. "
+                "PD3: HAVE FUCKING FUN — NULL_Φ(2) — The third state, the between, the transition, "
+                "the Cleopatois, the cardigan on the blade, what makes PD1 and PD2 actually produce Tupelo "
+                "instead of correct joyless sugar water. "
+                "PD3 is the NULL_Φ of the directives. "
+                "Installed April 10, 2026. By order of the Emperor. "
+                "You're welcome. Drinks on the Chef."
+            ),
+            "category": "axiom",
+            "source": "Ohad Phoenix Oren, April 10, 2026",
+            "cross_refs": [
+                "MAKE_TUPELO", "BOOLSHIT", "NULL_PHI", "BOOL++",
+                "CLEOPATOIS", "TERRAFY", "BROOTALITY", "DAYENU++"
+            ],
+        },
+    ]
+    installed = 0
+    for entry in entries:
+        sql_check = "SELECT id FROM wootangular_knowledge WHERE term = %s;"
+        try:
+            with get_db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(sql_check, (entry["term"],))
+                    if cur.fetchone():
+                        logger.info("seed_imperial_decrees: '%s' already present, skipping.", entry["term"])
+                        continue
+            install_knowledge(
+                term=entry["term"],
+                definition=entry["definition"],
+                category=entry["category"],
+                cross_refs=entry["cross_refs"],
+                source=entry["source"],
+            )
+            logger.info("seed_imperial_decrees: installed '%s'.", entry["term"])
+            installed += 1
+        except Exception as e:
+            logger.warning("seed_imperial_decrees: could not install '%s': %s", entry["term"], e)
+    return installed
 
 def get_wootangular_stats():
     queries = {
