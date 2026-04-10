@@ -15,6 +15,7 @@ from core.filter import WootangularFilter
 from core.tcp_up import TCPUp
 from core.init_loader import load_corpus_into_cache
 from core.fusion_core import FusionCore, BOOL_NULL
+from core.solar8 import Solar8
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -42,6 +43,7 @@ boot()
 
 tcp_up = TCPUp(db_banks=banks)
 fusion_core = FusionCore()
+solar8 = Solar8()
 
 
 @app.route("/health")
@@ -79,6 +81,7 @@ def index():
             "fuse":       "POST /api/fuse",
             "fuse_swarm": "POST /api/fuse/swarm",
             "hive_state": "GET  /api/fuse/hive_state",
+            "chat":       "POST /api/chat",
         },
         "tagline": "VENIM.US · VIDEM.US · VINCIM.US",
         "no_omega": True
@@ -238,6 +241,23 @@ def hive_state():
     except Exception as e:
         logger.error("hive_state error: %s", e)
         return jsonify({"status": "error", "message": "Hive state query failed. Check logs."}), 500
+
+
+@app.route("/api/chat", methods=["POST"])
+def chat():
+    if not solar8.online:
+        return jsonify({"status": "error", "message": "Solar8 offline — API key not configured."}), 503
+    data = request.get_json(silent=True) or {}
+    message = data.get("message", "").strip()
+    history = data.get("history", [])
+    if not message:
+        return jsonify({"status": "error", "message": "message required."}), 400
+    try:
+        response = solar8.chat(message=message, history=history)
+        return jsonify({"status": "ok", "response": response, "agent": "Solar8"})
+    except Exception as e:
+        logger.error("chat error: %s", e)
+        return jsonify({"status": "error", "message": "Solar8 is thinking. Try again."}), 500
 
 
 if __name__ == "__main__":
