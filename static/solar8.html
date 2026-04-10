@@ -4,9 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Solar8 — WOOTANGULAR369</title>
+  <link rel="icon" href="/static/favicon.ico" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -51,7 +52,7 @@
     #feed {
       position: fixed;
       top: 56px;
-      bottom: 72px;
+      bottom: 112px;
       left: 0; right: 0;
       overflow-y: auto;
       padding: 20px 16px 8px;
@@ -62,22 +63,36 @@
     }
 
     /* ── Messages ── */
+    .msg-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .msg-row.user {
+      flex-direction: row-reverse;
+    }
+    .bot-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      object-fit: cover;
+      margin-top: 2px;
+    }
     .msg {
       max-width: 72%;
       padding: 10px 14px;
       border-radius: 14px;
       line-height: 1.55;
       word-wrap: break-word;
-      white-space: pre-wrap;
     }
     .msg.user {
-      align-self: flex-end;
       background: #1a1a2e;
       border-bottom-right-radius: 4px;
       color: #c8d8ff;
+      white-space: pre-wrap;
     }
     .msg.bot {
-      align-self: flex-start;
       background: #141414;
       border: 1px solid #222;
       border-bottom-left-radius: 4px;
@@ -86,7 +101,128 @@
     .msg.thinking {
       color: #555;
       font-style: italic;
+      white-space: pre-wrap;
     }
+
+    /* ── Bot message actions ── */
+    .msg-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .tts-btn {
+      background: none;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      color: #555;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 2px 7px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tts-btn:hover { color: #a0b4ff; border-color: #3a3a5c; }
+
+    /* ── Code blocks ── */
+    .code-wrapper {
+      position: relative;
+      margin: 8px 0;
+    }
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-bottom: none;
+      border-radius: 6px 6px 0 0;
+      padding: 4px 10px;
+    }
+    .code-lang {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #555;
+      text-transform: lowercase;
+    }
+    .code-btns {
+      display: flex;
+      gap: 6px;
+    }
+    .code-btn {
+      background: none;
+      border: 1px solid #2a2a2a;
+      border-radius: 4px;
+      color: #666;
+      cursor: pointer;
+      font-family: 'Outfit', sans-serif;
+      font-size: 11px;
+      padding: 2px 8px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .code-btn:hover { color: #a0b4ff; border-color: #3a3a5c; }
+    pre {
+      background: #0d0d0d;
+      border: 1px solid #2a2a2a;
+      border-left: 2px solid #3a3a5c;
+      border-radius: 0 0 6px 6px;
+      overflow-x: auto;
+      padding: 12px 14px;
+    }
+    pre code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: #c8d8ff;
+      white-space: pre;
+    }
+
+    /* ── Search indicator ── */
+    .search-indicator {
+      align-self: flex-start;
+      color: #a0b4ff;
+      font-size: 13px;
+      font-style: italic;
+      padding: 4px 10px;
+      animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+    .fade-out { animation: fadeOut 0.4s ease forwards; }
+
+    /* ── File chip ── */
+    #chip-bar {
+      position: fixed;
+      bottom: 72px;
+      left: 0; right: 0;
+      height: 40px;
+      background: #0a0a0a;
+      border-top: 1px solid #1e1e1e;
+      display: none;
+      align-items: center;
+      padding: 0 16px;
+    }
+    #chip-bar.visible { display: flex; }
+    .file-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #1a1a2e;
+      border: 1px solid #3a3a5c;
+      border-radius: 20px;
+      color: #a0b4ff;
+      font-size: 12px;
+      padding: 3px 10px;
+    }
+    .chip-remove {
+      background: none;
+      border: none;
+      color: #666;
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+      padding: 0;
+      transition: color 0.15s;
+    }
+    .chip-remove:hover { color: #ff6b6b; }
 
     /* ── Input bar ── */
     #input-bar {
@@ -100,6 +236,22 @@
       padding: 0 16px;
       gap: 10px;
     }
+    .paperclip-btn {
+      background: none;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      color: #555;
+      cursor: pointer;
+      font-size: 18px;
+      height: 44px;
+      width: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .paperclip-btn:hover { color: #a0b4ff; border-color: #3a3a5c; }
     #msg-input {
       flex: 1;
       background: #111;
@@ -115,9 +267,7 @@
       line-height: 1.4;
       transition: border-color 0.15s;
     }
-    #msg-input:focus {
-      border-color: #3a3a5c;
-    }
+    #msg-input:focus { border-color: #3a3a5c; }
     #send-btn {
       background: #1a1a2e;
       border: 1px solid #3a3a5c;
@@ -132,14 +282,8 @@
       transition: background 0.15s, color 0.15s;
       white-space: nowrap;
     }
-    #send-btn:hover {
-      background: #24245a;
-      color: #c8d8ff;
-    }
-    #send-btn:disabled {
-      opacity: 0.4;
-      cursor: default;
-    }
+    #send-btn:hover { background: #24245a; color: #c8d8ff; }
+    #send-btn:disabled { opacity: 0.4; cursor: default; }
   </style>
 </head>
 <body>
@@ -151,27 +295,239 @@
 
   <div id="feed"></div>
 
+  <div id="chip-bar">
+    <div class="file-chip">
+      <span id="chip-name"></span>
+      <button class="chip-remove" id="chip-remove" title="Remove file">✕</button>
+    </div>
+  </div>
+
   <div id="input-bar">
+    <button class="paperclip-btn" id="paperclip-btn" title="Attach file">📎</button>
+    <input type="file" id="file-input" accept="image/*,.pdf,.txt,.py,.js,.ts,.md,.json,.csv,.html,.css" style="display:none" />
     <textarea id="msg-input" placeholder="Say something…" rows="1"></textarea>
     <button id="send-btn">Send</button>
   </div>
 
   <script>
-    const feed    = document.getElementById('feed');
-    const input   = document.getElementById('msg-input');
-    const sendBtn = document.getElementById('send-btn');
+    const feed        = document.getElementById('feed');
+    const input       = document.getElementById('msg-input');
+    const sendBtn     = document.getElementById('send-btn');
+    const paperclip   = document.getElementById('paperclip-btn');
+    const fileInput   = document.getElementById('file-input');
+    const chipBar     = document.getElementById('chip-bar');
+    const chipName    = document.getElementById('chip-name');
+    const chipRemove  = document.getElementById('chip-remove');
 
     let history = [];
+    let attachedFile = null; // { name, mime_type, data, is_text }
 
-    function addMessage(text, role) {
+    // ── File attachment ───────────────────────────────────
+    paperclip.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', () => {
+      const f = fileInput.files[0];
+      if (!f) return;
+      const TEXT_TYPES = ['text/plain','text/x-python','application/javascript',
+        'text/javascript','text/markdown','application/json','text/csv',
+        'text/html','text/css','application/typescript'];
+      const isText = TEXT_TYPES.includes(f.type) || f.name.match(/\.(txt|py|js|ts|md|json|csv|html|css)$/i);
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        let data = e.target.result;
+        if (isText) {
+          attachedFile = { name: f.name, mime_type: f.type || 'text/plain', data, is_text: true };
+        } else {
+          // base64 strip prefix
+          const b64 = data.split(',')[1] || data;
+          attachedFile = { name: f.name, mime_type: f.type, data: b64, is_text: false };
+        }
+        chipName.textContent = f.name;
+        chipBar.classList.add('visible');
+        // adjust feed bottom to clear chip bar (72px input + 40px chip)
+        feed.style.bottom = '112px';
+      };
+      if (isText) {
+        reader.readAsText(f);
+      } else {
+        reader.readAsDataURL(f);
+      }
+      fileInput.value = '';
+    });
+
+    chipRemove.addEventListener('click', clearAttachment);
+
+    function clearAttachment() {
+      attachedFile = null;
+      chipBar.classList.remove('visible');
+      feed.style.bottom = '';
+    }
+
+    // ── Message rendering ─────────────────────────────────
+    const LANG_EXT = {
+      python: 'py', py: 'py', javascript: 'js', js: 'js', typescript: 'ts', ts: 'ts',
+      html: 'html', css: 'css', json: 'json', markdown: 'md', md: 'md',
+      bash: 'sh', sh: 'sh', sql: 'sql', java: 'java', c: 'c', cpp: 'cpp',
+      go: 'go', rust: 'rs', ruby: 'rb', php: 'php', yaml: 'yaml', toml: 'toml',
+    };
+
+    function renderBotContent(text) {
+      // Split on code fences
+      const parts = text.split(/(```[\s\S]*?```)/g);
+      const frag = document.createDocumentFragment();
+
+      parts.forEach(part => {
+        const fenceMatch = part.match(/^```(\w*)\n?([\s\S]*?)```$/);
+        if (fenceMatch) {
+          const lang = fenceMatch[1].toLowerCase();
+          const code = fenceMatch[2];
+          const ext = LANG_EXT[lang] || (lang || null);
+
+          const wrapper = document.createElement('div');
+          wrapper.className = 'code-wrapper';
+
+          const header = document.createElement('div');
+          header.className = 'code-header';
+
+          const langLabel = document.createElement('span');
+          langLabel.className = 'code-lang';
+          langLabel.textContent = lang || 'code';
+          header.appendChild(langLabel);
+
+          const btns = document.createElement('div');
+          btns.className = 'code-btns';
+
+          const copyBtn = document.createElement('button');
+          copyBtn.className = 'code-btn';
+          copyBtn.textContent = 'Copy';
+          copyBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(code).then(() => {
+              copyBtn.textContent = 'Copied!';
+              setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+            });
+          });
+          btns.appendChild(copyBtn);
+
+          if (ext) {
+            const dlBtn = document.createElement('button');
+            dlBtn.className = 'code-btn';
+            dlBtn.textContent = 'Download';
+            dlBtn.addEventListener('click', () => {
+              const blob = new Blob([code], { type: 'text/plain' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `solar8_output.${ext}`;
+              a.click();
+              URL.revokeObjectURL(url);
+            });
+            btns.appendChild(dlBtn);
+          }
+
+          header.appendChild(btns);
+          wrapper.appendChild(header);
+
+          const pre = document.createElement('pre');
+          const codeEl = document.createElement('code');
+          codeEl.textContent = code;
+          pre.appendChild(codeEl);
+          wrapper.appendChild(pre);
+          frag.appendChild(wrapper);
+        } else if (part) {
+          const span = document.createElement('span');
+          span.style.whiteSpace = 'pre-wrap';
+          span.textContent = part;
+          frag.appendChild(span);
+        }
+      });
+      return frag;
+    }
+
+    function addUserMessage(text) {
+      const row = document.createElement('div');
+      row.className = 'msg-row user';
+      const bubble = document.createElement('div');
+      bubble.className = 'msg user';
+      bubble.textContent = text;
+      row.appendChild(bubble);
+      feed.appendChild(row);
+      feed.scrollTop = feed.scrollHeight;
+      return row;
+    }
+
+    function addBotMessage(text, thinking = false) {
+      const row = document.createElement('div');
+      row.className = 'msg-row';
+
+      const avatar = document.createElement('img');
+      avatar.className = 'bot-avatar';
+      avatar.src = '/static/android-chrome-512x512.png';
+      avatar.alt = 'Solar8';
+      row.appendChild(avatar);
+
+      const bubble = document.createElement('div');
+      bubble.className = 'msg bot' + (thinking ? ' thinking' : '');
+
+      if (thinking) {
+        bubble.textContent = text;
+      } else {
+        bubble.appendChild(renderBotContent(text));
+
+        const actions = document.createElement('div');
+        actions.className = 'msg-actions';
+
+        const ttsBtn = document.createElement('button');
+        ttsBtn.className = 'tts-btn';
+        ttsBtn.title = 'Read aloud';
+        ttsBtn.textContent = '🔊';
+        ttsBtn.addEventListener('click', () => playTTS(text, ttsBtn));
+        actions.appendChild(ttsBtn);
+
+        bubble.appendChild(actions);
+      }
+
+      row.appendChild(bubble);
+      feed.appendChild(row);
+      feed.scrollTop = feed.scrollHeight;
+      return row;
+    }
+
+    function addSearchIndicator() {
       const el = document.createElement('div');
-      el.className = 'msg ' + role;
-      el.textContent = text;
+      el.className = 'search-indicator';
+      el.textContent = '🔍 searching...';
       feed.appendChild(el);
       feed.scrollTop = feed.scrollHeight;
       return el;
     }
 
+    // ── TTS ───────────────────────────────────────────────
+    async function playTTS(text, btn) {
+      btn.disabled = true;
+      btn.textContent = '⏳';
+      try {
+        const res = await fetch('/api/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+        const data = await res.json();
+        if (data.status === 'ok' && data.audio_base64) {
+          const audio = new Audio(`data:${data.mime_type};base64,${data.audio_base64}`);
+          audio.play();
+          audio.onended = () => { btn.textContent = '🔊'; btn.disabled = false; };
+        } else {
+          btn.textContent = '🔊';
+          btn.disabled = false;
+        }
+      } catch {
+        btn.textContent = '🔊';
+        btn.disabled = false;
+      }
+    }
+
+    // ── Send ──────────────────────────────────────────────
     async function sendMessage() {
       const text = input.value.trim();
       if (!text) return;
@@ -179,26 +535,44 @@
       input.value = '';
       sendBtn.disabled = true;
 
-      addMessage(text, 'user');
+      addUserMessage(text);
 
-      const thinking = addMessage('Solar8 is thinking…', 'bot thinking');
+      let searchEl = null;
+      const thinking = addBotMessage('Solar8 is thinking…', true);
 
       history.push({ role: 'user', content: text });
+
+      const body = { message: text, history: history.slice(0, -1) };
+      if (attachedFile) {
+        body.file = attachedFile;
+        clearAttachment();
+      }
 
       try {
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text, history: history.slice(0, -1) })
+          body: JSON.stringify(body),
         });
         const data = await res.json();
         const reply = data.response || data.message || 'No response.';
+
         thinking.remove();
-        addMessage(reply, 'bot');
+        if (searchEl) { searchEl.remove(); searchEl = null; }
+
+        if (reply.startsWith('[SEARCH:')) {
+          searchEl = addSearchIndicator();
+          setTimeout(() => {
+            if (searchEl) { searchEl.classList.add('fade-out'); setTimeout(() => searchEl && searchEl.remove(), 400); }
+          }, 1500);
+        }
+
+        addBotMessage(reply);
         history.push({ role: 'assistant', content: reply });
       } catch (err) {
         thinking.remove();
-        addMessage('Error reaching Solar8. Try again.', 'bot thinking');
+        if (searchEl) { searchEl.remove(); }
+        addBotMessage('Error reaching Solar8. Try again.', true);
         history.pop();
       } finally {
         sendBtn.disabled = false;
@@ -217,3 +591,4 @@
   </script>
 </body>
 </html>
+

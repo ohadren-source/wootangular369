@@ -16,6 +16,7 @@ from core.tcp_up import TCPUp
 from core.init_loader import load_corpus_into_cache
 from core.fusion_core import FusionCore, BOOL_NULL
 from core.solar8 import Solar8
+import core.google_services as google_services
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -82,6 +83,9 @@ def index():
             "fuse_swarm": "POST /api/fuse/swarm",
             "hive_state": "GET  /api/fuse/hive_state",
             "chat":       "POST /api/chat",
+            "search":     "POST /api/search",
+            "vision":     "POST /api/vision",
+            "tts":        "POST /api/tts",
         },
         "tagline": "VENIM.US · VIDEM.US · VINCIM.US",
         "no_omega": True
@@ -250,14 +254,62 @@ def chat():
     data = request.get_json(silent=True) or {}
     message = data.get("message", "").strip()
     history = data.get("history", [])
+    file = data.get("file") or None
     if not message:
         return jsonify({"status": "error", "message": "message required."}), 400
     try:
-        response = solar8.chat(message=message, history=history)
+        response = solar8.chat(message=message, history=history, file=file)
         return jsonify({"status": "ok", "response": response, "agent": "Solar8"})
     except Exception as e:
         logger.error("chat error: %s", e)
         return jsonify({"status": "error", "message": "Solar8 is thinking. Try again."}), 500
+
+
+@app.route("/api/search", methods=["POST"])
+def search():
+    data = request.get_json(silent=True) or {}
+    query = data.get("query", "").strip()
+    if not query:
+        return jsonify({"status": "error", "message": "query required."}), 400
+    try:
+        results = google_services.brave_search(query)
+        if not results:
+            results = google_services.google_search(query)
+        return jsonify({"status": "ok", "results": results})
+    except Exception as e:
+        logger.error("search error: %s", e)
+        return jsonify({"status": "error", "message": "Search failed. Check logs."}), 500
+
+
+@app.route("/api/vision", methods=["POST"])
+def vision():
+    data = request.get_json(silent=True) or {}
+    image_base64 = data.get("image_base64", "")
+    mime_type = data.get("mime_type", "image/jpeg")
+    if not image_base64:
+        return jsonify({"status": "error", "message": "image_base64 required."}), 400
+    try:
+        result = google_services.analyze_image(image_base64, mime_type)
+        return jsonify({"status": "ok", **result})
+    except Exception as e:
+        logger.error("vision error: %s", e)
+        return jsonify({"status": "error", "message": "Vision analysis failed. Check logs."}), 500
+
+
+@app.route("/api/tts", methods=["POST"])
+def tts():
+    data = request.get_json(silent=True) or {}
+    text = data.get("text", "").strip()
+    if not text:
+        return jsonify({"status": "error", "message": "text required."}), 400
+    try:
+        audio_base64 = google_services.text_to_speech(text)
+        if not audio_base64:
+            return jsonify({"status": "error", "message": "TTS unavailable — GOOGLE_TTS_API_KEY not configured."}), 503
+        return jsonify({"status": "ok", "audio_base64": audio_base64, "mime_type": "audio/mp3"})
+    except Exception as e:
+        logger.error("tts error: %s", e)
+        return jsonify({"status": "error", "message": "TTS failed. Check logs."}), 500
 
 
 @app.route("/solar8")
