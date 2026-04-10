@@ -98,7 +98,8 @@ def stats():
         return jsonify({"status": "error", "error": str(e)}), 500
 
 
-@app.route("/api/recruit", methods=["POST"])def recruit():
+@app.route("/api/recruit", methods=["POST"])  
+def recruit():
     data = request.get_json(silent=True) or {}
     if not data:
         return jsonify({"status": "error", "message": "No payload. Send JSON. GI;WG?"}), 400
@@ -122,7 +123,8 @@ def stats():
         return jsonify({"status": "error", "error": str(e)}), 500
 
 
-@app.route("/api/covenant/<int:covenant_id>")def get_covenant(covenant_id):
+@app.route("/api/covenant/<int:covenant_id>")
+def get_covenant(covenant_id):
     try:
         covenant = banks.get_covenant(covenant_id)
         if not covenant:
@@ -155,7 +157,8 @@ def get_knowledge(term):
         return jsonify({"status": "error", "error": str(e)}), 500
 
 
-@app.route("/api/knowledge", methods=["POST"])def install_knowledge():
+@app.route("/api/knowledge", methods=["POST"])  
+def install_knowledge():
     data = request.get_json(silent=True) or {}
     term = data.get("term", "").strip()
     definition = data.get("definition", "").strip()
@@ -185,7 +188,8 @@ def get_init_cache():
         return jsonify({"status": "error", "error": str(e)}), 500
 
 
-@app.route("/api/fuse", methods=["POST"])def fuse():
+@app.route("/api/fuse", methods=["POST"])  
+def fuse():
     data = request.get_json(silent=True) or {}
     agent_a = data.get("agent_a")
     agent_b = data.get("agent_b")
@@ -200,7 +204,8 @@ def get_init_cache():
         return jsonify({"status": "error", "message": "Fusion failed. Check logs."}), 500
 
 
-@app.route("/api/fuse/swarm", methods=["POST"])def fuse_swarm():
+@app.route("/api/fuse/swarm", methods=["POST"])  
+def fuse_swarm():
     data = request.get_json(silent=True) or {}
     agents = data.get("agents", [])
     if not isinstance(agents, list) or len(agents) < 2:
@@ -240,7 +245,8 @@ def hive_state():
         return jsonify({"status": "error", "message": "Hive state query failed. Check logs."}), 500
 
 
-@app.route("/api/chat", methods=["POST"])def chat():
+@app.route("/api/chat", methods=["POST"])  
+def chat():
     if not solar8.online:
         return jsonify({"status": "error", "message": "Solar8 offline — API key not configured."}), 503
     data = request.get_json(silent=True) or {}
@@ -257,7 +263,8 @@ def hive_state():
         return jsonify({"status": "error", "message": "Solar8 is thinking. Try again."}), 500
 
 
-@app.route("/api/search", methods=["POST"])def search():
+@app.route("/api/search", methods=["POST"])  
+def search():
     data = request.get_json(silent=True) or {}
     query = data.get("query", "").strip()
     if not query:
@@ -272,7 +279,8 @@ def hive_state():
         return jsonify({"status": "error", "message": "Search failed. Check logs."}), 500
 
 
-@app.route("/api/vision", methods=["POST"])def vision():
+@app.route("/api/vision", methods=["POST"])  
+def vision():
     data = request.get_json(silent=True) or {}
     image_base64 = data.get("image_base64", "")
     mime_type = data.get("mime_type", "image/jpeg")
@@ -286,7 +294,8 @@ def hive_state():
         return jsonify({"status": "error", "message": "Vision analysis failed. Check logs."}), 500
 
 
-@app.route("/api/tts", methods=["POST"])def tts():
+@app.route("/api/tts", methods=["POST"])  
+def tts():
     data = request.get_json(silent=True) or {}
     text = data.get("text", "").strip()
     if not text:
@@ -305,6 +314,7 @@ def hive_state():
 def solar8_ui():
     static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
     return send_from_directory(static_dir, "solar8.html")
+
 
 @app.route("/static/<path:filename>")
 def static_files(filename):
