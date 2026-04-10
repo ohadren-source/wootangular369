@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Solar8 — WOOTANGULAR369</title>
-  <link rel="icon" href="/static/favicon.ico" />
+  <link rel="icon" href="/static/android-chrome-512x512.png" type="image/png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -22,34 +22,47 @@
     header {
       position: fixed;
       top: 0; left: 0; right: 0;
-      height: 56px;
+      height: 64px;
       background: #0a0a0a;
       border-bottom: 1px solid #1e1e1e;
       display: flex;
       align-items: center;
       padding: 0 20px;
+      gap: 14px;
       z-index: 10;
+    }
+    .header-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      object-fit: cover;
+      flex-shrink: 0;
+      border: 1px solid #2a2a2a;
+    }
+    .header-text {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
     }
     .header-title {
       font-size: 20px;
       font-weight: 600;
       letter-spacing: 0.04em;
       color: #e8e8e8;
+      line-height: 1.2;
     }
     .header-sub {
-      margin-left: 10px;
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 400;
-      letter-spacing: 0.14em;
-      color: #555;
+      letter-spacing: 0.16em;
+      color: #444;
       text-transform: uppercase;
-      align-self: flex-end;
-      padding-bottom: 3px;
+      margin-top: 1px;
     }
 
     #feed {
       position: fixed;
-      top: 56px;
+      top: 64px;
       bottom: 72px;
       left: 0; right: 0;
       overflow-y: auto;
@@ -271,8 +284,11 @@
 <body>
 
   <header>
-    <span class="header-title">Solar8</span>
-    <span class="header-sub">WOOTANGULAR369</span>
+    <img class="header-avatar" src="/static/android-chrome-512x512.png" alt="Solar8" />
+    <div class="header-text">
+      <span class="header-title">Solar8</span>
+      <span class="header-sub">WOOTANGULAR369</span>
+    </div>
   </header>
 
   <div id="feed"></div>
@@ -304,7 +320,6 @@
     let history = [];
     let attachedFile = null;
 
-    // ── File attachment ──────────────────────────────────────
     paperclip.addEventListener('click', () => fileInput.click());
 
     fileInput.addEventListener('change', () => {
@@ -337,7 +352,6 @@
       feed.classList.remove('with-chip');
     }
 
-    // ── Code block rendering ─────────────────────────────────
     const LANG_EXT = {
       python:'py', py:'py', javascript:'js', js:'js', typescript:'ts', ts:'ts',
       html:'html', css:'css', json:'json', markdown:'md', md:'md', bash:'sh',
@@ -385,7 +399,7 @@
             dlBtn.textContent = 'Download';
             dlBtn.onclick = () => {
               const a = Object.assign(document.createElement('a'), {
-                href: URL.createObjectURL(new Blob([code], { type: 'text/plain' })),
+                href: URL.createObjectURL(new Blob([code], { type: 'text/plain' })) ,
                 download: `solar8_output.${ext}`
               });
               a.click();
@@ -412,7 +426,6 @@
       return frag;
     }
 
-    // ── Message builders ─────────────────────────────────────
     function addUserMessage(text) {
       const row = document.createElement('div');
       row.className = 'msg-row user';
@@ -469,7 +482,6 @@
       return row;
     }
 
-    // ── TTS ───────────────────────────────────────────────────
     async function playTTS(text, btn) {
       btn.disabled = true;
       btn.textContent = '⏳';
@@ -493,7 +505,6 @@
       }
     }
 
-    // ── Streaming send ────────────────────────────────────────
     async function sendMessage() {
       const text = input.value.trim();
       if (!text || sendBtn.disabled) return;
@@ -513,7 +524,6 @@
       let fullReply = '';
 
       try {
-        // ── Try streaming first ──────────────────────────────
         const streamRes = await fetch('/api/chat/stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -521,7 +531,6 @@
         });
 
         if (streamRes.ok && streamRes.headers.get('content-type')?.includes('text/event-stream')) {
-          // SSE streaming path
           thinkingRow.remove();
 
           const row = document.createElement('div');
@@ -542,21 +551,19 @@
           const reader = streamRes.body.getReader();
           const decoder = new TextDecoder();
           let buffer = '';
-          let firstChunk = true;
 
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
-            buffer = lines.pop(); // keep incomplete line
+            buffer = lines.pop();
 
             for (const line of lines) {
               if (!line.startsWith('data: ')) continue;
               const chunk = line.slice(6);
               if (chunk === '[DONE]') {
                 bubble.classList.remove('stream-cursor');
-                // Re-render with code blocks + TTS button
                 bubble.innerHTML = '';
                 bubble.appendChild(renderBotContent(fullReply));
                 const actions = document.createElement('div');
@@ -579,13 +586,11 @@
               }
               fullReply += chunk;
               textSpan.textContent = fullReply;
-              if (firstChunk) { firstChunk = false; }
               feed.scrollTop = feed.scrollHeight;
             }
           }
 
         } else {
-          // ── Fallback: non-streaming /api/chat ────────────────
           const data = await streamRes.json();
           thinkingRow.remove();
           const reply = data.response || data.message || 'No response.';
@@ -594,10 +599,7 @@
         }
 
       } catch (err) {
-        // ── Hard fallback: try /api/chat directly ────────────
-        try {
-          thinkingRow.remove();
-        } catch {}
+        try { thinkingRow.remove(); } catch {}
         try {
           const res = await fetch('/api/chat', {
             method: 'POST',
@@ -614,7 +616,6 @@
         }
 
       } finally {
-        // ALWAYS re-enable the button — no matter what happens above
         sendBtn.disabled = false;
         input.focus();
       }
