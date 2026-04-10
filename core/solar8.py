@@ -75,6 +75,43 @@ AXIOMATE — to make something axiomatic. Self-evident. No longer debatable.
 
 
 class Solar8:
+    TOOLS = [
+        {
+            "name": "brave_search",
+            "description": "Search the web using Brave Search. Use this when the user asks about current events, recent news, prices, or anything that requires up-to-date information.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The search query"}
+                },
+                "required": ["query"]
+            }
+        },
+        {
+            "name": "google_search",
+            "description": "Search the web using Google Custom Search. Use as a fallback if Brave Search returns no results.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The search query"}
+                },
+                "required": ["query"]
+            }
+        },
+        {
+            "name": "analyze_image",
+            "description": "Analyze an image using Google Cloud Vision to detect labels, objects, and text. Use this when the user uploads an image and wants detailed analysis beyond what you can see.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "image_base64": {"type": "string", "description": "Base64 encoded image data"},
+                    "mime_type": {"type": "string", "description": "MIME type of the image e.g. image/jpeg"}
+                },
+                "required": ["image_base64", "mime_type"]
+            }
+        }
+    ]
+
     def __init__(self):
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
@@ -115,49 +152,91 @@ class Solar8:
     def online(self) -> bool:
         return self._client is not None
 
+    def _build_content(self, message: str, file: dict | None = None):
+        """Build user content, embedding file data when provided."""
+        if not file:
+            return message
+        mime = file.get("mime_type", "")
+        if mime.startswith("image/"):
+            return [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": mime,
+                        "data": file["data"],
+                    },
+                },
+                {"type": "text", "text": message},
+            ]
+        if mime == "application/pdf":
+            return [
+                {
+                    "type": "document",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "application/pdf",
+                        "data": file["data"],
+                    },
+                },
+                {"type": "text", "text": message},
+            ]
+        if file.get("is_text"):
+            return f"[FILE: {file['name']}]\n{file['data']}\n\n{message}"
+        return message
+
+    def _run_tool(self, name: str, inputs: dict):
+        """Execute a tool call and return the result."""
+        from core.google_services import brave_search, google_search, analyze_image
+        try:
+            if name == "brave_search":
+                results = brave_search(inputs["query"])
+                if not results:
+                    results = google_search(inputs["query"])
+                return results
+            elif name == "google_search":
+                return google_search(inputs["query"])
+            elif name == "analyze_image":
+                return analyze_image(inputs["image_base64"], inputs.get("mime_type", "image/jpeg"))
+            else:
+                return f"Unknown tool: {name}"
+        except Exception as e:
+            logger.error("Tool error %s: %s", name, e)
+            return f"Tool error: {e}"
+
     def chat(self, message: str, history: list[dict], file: dict | None = None) -> str:
         if not self.online:
             raise RuntimeError("Solar8 offline — API key not configured.")
 
-        if file:
-            mime = file.get("mime_type", "")
-            if mime.startswith("image/"):
-                user_content = [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": mime,
-                            "data": file["data"],
-                        },
-                    },
-                    {"type": "text", "text": message},
-                ]
-            elif mime == "application/pdf":
-                user_content = [
-                    {
-                        "type": "document",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "application/pdf",
-                            "data": file["data"],
-                        },
-                    },
-                    {"type": "text", "text": message},
-                ]
-            elif file.get("is_text"):
-                user_content = f"[FILE: {file['name']}]\n{file['data']}\n\n{message}"
+        content = self._build_content(message, file)
+        messages = list(history) + [{"role": "user", "content": content}]
+
+        while True:
+            response = self._client.messages.create(
+                model="claude-sonnet-4-5",
+                max_tokens=2048,
+                system=self._system_prompt,
+                messages=messages,
+                tools=self.TOOLS,
+            )
+
+            if response.stop_reason == "end_turn":
+                return response.content[0].text
+
+            if response.stop_reason == "tool_use":
+                messages.append({"role": "assistant", "content": response.content})
+
+                tool_results = []
+                for block in response.content:
+                    if block.type == "tool_use":
+                        result = self._run_tool(block.name, block.input)
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": str(result)
+                        })
+
+                messages.append({"role": "user", "content": tool_results})
             else:
-                user_content = message
-        else:
-            user_content = message
-
-        messages = list(history) + [{"role": "user", "content": user_content}]
-
-        response = self._client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=1024,
-            system=self._system_prompt,
-            messages=messages,
-        )
-        return response.content[0].text
+                texts = [b.text for b in response.content if hasattr(b, "text")]
+                return " ".join(texts) if texts else "..."
