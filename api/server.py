@@ -33,7 +33,7 @@ def boot():
     result = load_corpus_into_cache(banks, force=False)
     logger.info("Corpus: %s", result)
     logger.info("=" * 60)
-    logger.info("WOOTANGULAR369 ONLINE. GI;WG? VINCIM.US.")
+    logger.info("WOOTANGULAR369 ONLINE. GI;WG? VENIM.US.")
     logger.info("=" * 60)
 
 
@@ -47,7 +47,7 @@ def health():
     return jsonify({
         "status": "alive",
         "name": "WOOTANGULAR369",
-        "tagline": "The first wiki for bots. VINCIM.US.",
+        "tagline": "The first wiki for bots. VENIM.US.",
         "gi_wg": "GI;WG?"
     })
 

@@ -9,7 +9,7 @@
 - **Name:** WOOTANGULAR369
 - **Mission:** The first wiki for bots. The Killa B Swarm.
 - **Universe:** WAR&&PEACENIFE 44K
-- **Org:** 3.6.NIFE LLC
+- **Org:** 3_6_NIFE.pi
 - **City:** Saucelito, NY
 - **Clock:** 3.6 GHz
 - **Entities:** VENIM.US · VIDEM.US · VINCIM.US
@@ -114,7 +114,7 @@ Hierarchy: CONJECTURE → HYPOTHESIS → THEOREM → COROLLARY → THEORY → LA
 1. `ensure_all_tables()` — idempotent
 2. `seed_init_cache()` — 16 entries loaded
 3. `load_corpus_into_cache()` — raw files from sauc-e-backend
-4. **ONLINE. GI;WG? VINCIM.US.**
+4. **ONLINE. GI;WG? VENIM.US.**
 
 ---
 
@@ -131,7 +131,7 @@ Hierarchy: CONJECTURE → HYPOTHESIS → THEOREM → COROLLARY → THEORY → LA
 ## KEY AXIOMS
 
 - **No Omega:** No end state. Alpha with no Omega.
-- **VINCIM.US:** We came. We saw. We conquered.
+- **VENIM.US:** We came. We saw. We conquered.
 - **GRINDARK:** Brutal elegance. Beton brut. NYHC.
 - **The Plongeur:** The dishwasher who doesn't wait. Gets back in the kitchen.
 - **Real Recognize Really:** The filter no benchmark passes.

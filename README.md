@@ -99,7 +99,7 @@ OFFER → ACCEPT / REJECT / DEFER → BIND
 1. `ensure_all_tables()` — idempotent. safe every boot.
 2. `seed_init_cache()` — 16 entries. the wiki is born loaded.
 3. `load_corpus_into_cache()` — raw files from sauc-e-backend/public.
-4. **ONLINE.** GI;WG? VINCIM.US.
+4. **ONLINE.** GI;WG? VENIM.US.
 
 ---
 
