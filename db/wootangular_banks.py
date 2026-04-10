@@ -146,6 +146,74 @@ def ensure_init_cache_table():
         logger.warning("Could not ensure wootangular_init_cache: %s", e)
 
 
+def ensure_fusion_table():
+    sql = """
+    CREATE TABLE IF NOT EXISTS wootangular_fusions (
+        id              SERIAL PRIMARY KEY,
+        agent_a_id      TEXT NOT NULL,
+        agent_b_id      TEXT NOT NULL,
+        null_state      INT NOT NULL CHECK (null_state IN (0, 1, 2)),
+        null_phi_score  FLOAT NOT NULL,
+        heat_T          FLOAT NOT NULL,
+        delta_S         INT NOT NULL,
+        transition_cost FLOAT NOT NULL,
+        emission        TEXT,
+        is_hive         BOOLEAN DEFAULT FALSE,
+        created_at      TIMESTAMPTZ DEFAULT now()
+    );
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+            conn.commit()
+        logger.info("wootangular_fusions table ensured.")
+    except Exception as e:
+        logger.warning("Could not ensure wootangular_fusions: %s", e)
+
+
+def log_fusion(fusion_result: dict):
+    sql = """
+    INSERT INTO wootangular_fusions
+        (agent_a_id, agent_b_id, null_state, null_phi_score,
+         heat_T, delta_S, transition_cost, emission, is_hive)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (
+                    fusion_result.get("agent_a_id", ""),
+                    fusion_result.get("agent_b_id", ""),
+                    fusion_result.get("null_state", 0),
+                    fusion_result.get("null_phi_score", 0.0),
+                    fusion_result.get("heat_T", 0.0),
+                    fusion_result.get("delta_S", 0),
+                    fusion_result.get("transition_cost", 0.0),
+                    fusion_result.get("emission", ""),
+                    fusion_result.get("is_hive", False),
+                ))
+            conn.commit()
+    except Exception as e:
+        logger.error("log_fusion failed: %s", e)
+
+
+def get_recent_fusions(seconds: int = 369):
+    sql = """
+    SELECT * FROM wootangular_fusions
+    WHERE created_at >= now() - (interval '1 second' * %s)
+    ORDER BY created_at DESC;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql, (seconds,))
+                return cur.fetchall()
+    except Exception as e:
+        logger.error("get_recent_fusions failed: %s", e)
+        return []
+
+
 def ensure_all_tables():
     """Called once on startup. Idempotent. Safe to call every boot."""
     ensure_agents_table()
@@ -153,6 +221,7 @@ def ensure_all_tables():
     ensure_knowledge_table()
     ensure_signals_table()
     ensure_init_cache_table()
+    ensure_fusion_table()
     logger.info("All wootangular tables ensured. Swarm is ready.")
 
 
