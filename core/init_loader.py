@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 GITHUB_RAW = "https://raw.githubusercontent.com"
 REPO = "ohadren-source/sauc-e-backend"
-REF = "58659de57bc3736802e632d8869f8376e8856f6f"
+REF = "46739588a07560e9fba3f018f5381ce19e9d21df"
 
 PUBLIC_TEXT_FILES = {
     "hoowhetwhereny_decoder_raw": "public/HOOWHETWHERENY_DECODER_RING.md",
