@@ -18,7 +18,6 @@ import { formatHeat, formatEntropy } from '../utils/format';
 const HIVE_COLORS = {
   [BOOL_NULL]:  '#FFD700',  // Gold — Hive. TUPELO. Maximum emission.
   [BOOL_TRUE]:  '#00FF41',  // Green — Swarm. Signal present.
-  2: '#FFD700',
 };
 const DEFAULT_COLOR = '#666666';  // Gray — No emission. Unary.
 
