@@ -5,6 +5,7 @@ The front door of the swarm.
 """
 
 import os
+import json
 import uuid
 import logging
 import requests as http_requests
@@ -446,7 +447,7 @@ def a2a_task_send():
         remote_response = resp.json()
         banks.log_a2a_task(task_id=task_id, direction="outbound",
                            agent_name=agent_name, agent_url=agent_url,
-                           message=message, response=str(remote_response),
+                           message=message, response=json.dumps(remote_response),
                            status="complete")
         return jsonify({
             "status": "ok",
