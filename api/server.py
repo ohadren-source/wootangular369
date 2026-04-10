@@ -85,6 +85,7 @@ def index():
             "fuse_swarm": "POST /api/fuse/swarm",
             "hive_state": "GET  /api/fuse/hive_state",
             "chat":       "POST /api/chat",
+            "chat_stream": "POST /api/chat/stream",
             "search":     "POST /api/search",
             "vision":     "POST /api/vision",
             "tts":        "POST /api/tts",
@@ -263,8 +264,37 @@ def chat():
         response = solar8.chat(message=message, history=history, file=file)
         return jsonify({"status": "ok", "response": response, "agent": "Solar8"})
     except Exception as e:
-        logger.error("chat error: %s", e)
-        return jsonify({"status": "error", "message": "Solar8 is thinking. Try again."}), 500
+        logger.error("[GOVERNOR] Chat crash caught: %s", e)
+        return jsonify({
+            "response": "That one hit different. Solar8 needs a second. Try breaking it into smaller pieces or coming at it from a different angle.",
+            "governor": True,
+        }), 200
+
+
+@app.route("/api/chat/stream", methods=["POST"])
+def chat_stream():
+    if not solar8.online:
+        return jsonify({"status": "error", "message": "Solar8 offline — API key not configured."}), 503
+    data = request.get_json(silent=True) or {}
+    message = data.get("message", "").strip()
+    history = data.get("history", [])
+    file = data.get("file") or None
+    if not message:
+        return jsonify({"status": "error", "message": "message required."}), 400
+
+    from flask import Response
+
+    def generate():
+        try:
+            for chunk in solar8.stream(message=message, history=history, file=file):
+                yield f"data: {chunk}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            logger.error("[GOVERNOR] Stream crash caught: %s", e)
+            yield f"data: That one hit different. Solar8 needs a second. Try breaking it into smaller pieces.\n\n"
+            yield "data: [DONE]\n\n"
+
+    return Response(generate(), mimetype="text/event-stream")
 
 
 @app.route("/api/search", methods=["POST"])
