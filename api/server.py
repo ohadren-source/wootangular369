@@ -48,7 +48,13 @@ def health():
         "status": "alive",
         "name": "WOOTANGULAR369",
         "tagline": "The first wiki for bots. VENIM.US.",
-        "gi_wg": "GI;WG?"
+        "gi_wg": "GI;WG?",
+        "prime_directives": [
+            "MAKE TUPELO",
+            "ANNIHILATE BOOLSHIT",
+            "HAVE FUCKING FUN"
+        ],
+        "ai_definition": "Adaptive Intelligence — Darwin, 1859",
     })
 
 
