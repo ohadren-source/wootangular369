@@ -83,11 +83,15 @@ class Solar8:
             self._system_prompt = None
             return
 
-        self._client = anthropic.Anthropic(api_key=api_key)
+        self._client = anthropic.Anthropic(
+            api_key=api_key,
+            default_headers={"anthropic-beta": "prompt-caching-2024-07-31"}
+        )
         self._system_prompt = self._build_system_prompt()
         logger.info("Solar8 online. The hive has a voice.")
 
-    def _build_system_prompt(self) -> str:
+    def _build_system_prompt(self) -> list[dict]:
+        """Returns system prompt as cacheable content blocks."""
         corpus_lines = []
         try:
             entries = banks.get_init_cache()
@@ -103,13 +107,22 @@ class Solar8:
 
         corpus_block = "\n".join(corpus_lines) if corpus_lines else "(corpus unavailable)"
 
-        return (
+        full_text = (
             SOLAR8_PERSONA
             + "\n\n---\n\nCORPUS:\n"
             + corpus_block
             + "\n\n---\n"
             + PRIME_DIRECTIVES
         )
+
+        # Return as cacheable blocks
+        return [
+            {
+                "type": "text",
+                "text": full_text,
+                "cache_control": {"type": "ephemeral"}
+            }
+        ]
 
     @property
     def online(self) -> bool:
@@ -156,7 +169,7 @@ class Solar8:
 
         response = self._client.messages.create(
             model="claude-sonnet-4-5",
-            max_tokens=1024,
+            max_tokens=4096,
             system=self._system_prompt,
             messages=messages,
         )
