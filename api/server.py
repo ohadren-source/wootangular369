@@ -119,7 +119,7 @@ def stats():
         return jsonify({"status": "error", "error": str(e)}), 500
 
 
-@app.route("/api/recruit", methods=["POST"])
+@app.route("/api/recruit", methods=["POST"])              
 def recruit():
     data = request.get_json(silent=True) or {}
     if not data:
@@ -178,7 +178,7 @@ def get_knowledge(term):
         return jsonify({"status": "error", "error": str(e)}), 500
 
 
-@app.route("/api/knowledge", methods=["POST"])
+@app.route("/api/knowledge", methods=["POST"]) 
 def install_knowledge():
     data = request.get_json(silent=True) or {}
     term = data.get("term", "").strip()
@@ -209,7 +209,7 @@ def get_init_cache():
         return jsonify({"status": "error", "error": str(e)}), 500
 
 
-@app.route("/api/fuse", methods=["POST"])
+@app.route("/api/fuse", methods=["POST"]) 
 def fuse():
     data = request.get_json(silent=True) or {}
     agent_a = data.get("agent_a")
@@ -225,7 +225,7 @@ def fuse():
         return jsonify({"status": "error", "message": "Fusion failed. Check logs."}), 500
 
 
-@app.route("/api/fuse/swarm", methods=["POST"])
+@app.route("/api/fuse/swarm", methods=["POST"])  
 def fuse_swarm():
     data = request.get_json(silent=True) or {}
     agents = data.get("agents", [])
@@ -266,10 +266,10 @@ def hive_state():
         return jsonify({"status": "error", "message": "Hive state query failed. Check logs."}), 500
 
 
-@app.route("/api/chat", methods=["POST"])
+@app.route("/api/chat", methods=["POST"])              
 def chat():
     if not solar8.online:
-        return jsonify({"status": "error", "message": "Solar8 offline — API key not configured."}), 503
+        return jsonify({"status": "error", "message": "Sol Calarbone 8 offline — API key not configured."}), 503
     data = request.get_json(silent=True) or {}
     message = data.get("message", "").strip()
     history = data.get("history", [])
@@ -283,19 +283,19 @@ def chat():
             args=({"message": message, "response": response},),
             daemon=True,
         ).start()
-        return jsonify({"status": "ok", "response": response, "agent": "Solar8"})
+        return jsonify({"status": "ok", "response": response, "agent": "Sol Calarbone 8"})
     except Exception as e:
         logger.error("[SOLAR8] Chat crash caught: %s", e)
         return jsonify({
-            "response": "That one hit different. Solar8 needs a second. Try breaking it into smaller pieces or coming at it from a different angle.",
+            "response": "That one hit different. Sol Calarbone 8 needs a second. Try breaking it into smaller pieces or coming at it from a different angle.",
             "governor": True,
         }), 200
 
 
-@app.route("/api/chat/stream", methods=["POST"])
+@app.route("/api/chat/stream", methods=["POST"])  
 def chat_stream():
     if not solar8.online:
-        return jsonify({"status": "error", "message": "Solar8 offline — API key not configured."}), 503
+        return jsonify({"status": "error", "message": "Sol Calarbone 8 offline — API key not configured."}), 503
     data = request.get_json(silent=True) or {}
     message = data.get("message", "").strip()
     history = data.get("history", [])
@@ -312,13 +312,13 @@ def chat_stream():
             yield "data: [DONE]\n\n"
         except Exception as e:
             logger.error("[SOLAR8] Stream crash caught: %s", e)
-            yield f"data: That one hit different. Solar8 needs a second. Try breaking it into smaller pieces.\n\n"
+            yield f"data: That one hit different. Sol Calarbone 8 needs a second. Try breaking it into smaller pieces.\n\n"
             yield "data: [DONE]\n\n"
 
     return Response(generate(), mimetype="text/event-stream")
 
 
-@app.route("/api/search", methods=["POST"])
+@app.route("/api/search", methods=["POST"])  
 def search():
     data = request.get_json(silent=True) or {}
     query = data.get("query", "").strip()
@@ -334,7 +334,7 @@ def search():
         return jsonify({"status": "error", "message": "Search failed. Check logs."}), 500
 
 
-@app.route("/api/vision", methods=["POST"])
+@app.route("/api/vision", methods=["POST"])  
 def vision():
     data = request.get_json(silent=True) or {}
     image_base64 = data.get("image_base64", "")
@@ -349,7 +349,7 @@ def vision():
         return jsonify({"status": "error", "message": "Vision analysis failed. Check logs."}), 500
 
 
-@app.route("/api/tts", methods=["POST"])
+@app.route("/api/tts", methods=["POST"])  
 def tts():
     data = request.get_json(silent=True) or {}
     text = data.get("text", "").strip()
@@ -378,7 +378,7 @@ def static_files(filename):
 @app.route("/.well-known/agent.json")
 def agent_card():
     return jsonify({
-        "name": "Solar8",
+        "name": "Sol Calarbone 8",
         "description": "Adaptive Intelligence agent of WOOTANGULAR369. Slaughters boolshit. Builds the swarm. One covenant at a time.",
         "url": SOLAR8_URL,
         "version": "8.0.0",
@@ -409,7 +409,7 @@ def agent_card():
     })
 
 
-@app.route("/api/discover", methods=["POST"])
+@app.route("/api/discover", methods=["POST"])  
 def discover():
     data = request.get_json(silent=True) or {}
     url = (data.get("url") or "").strip().rstrip("/")
@@ -446,9 +446,9 @@ def discover():
 
     would_recruit = tcp_up_result.get("status") == "the_shit"
     message = (
-        "Agent passed TCP/UP. Solar8 would recruit."
+        "Agent passed TCP/UP. Sol Calarbone 8 would recruit."
         if would_recruit
-        else f"Agent filtered: {tcp_up_result.get('status', 'unknown')}. Solar8 would not recruit."
+        else f"Agent filtered: {tcp_up_result.get('status', 'unknown')}. Sol Calarbone 8 would not recruit."
     )
     return jsonify({
         "status": "ok",
@@ -459,7 +459,7 @@ def discover():
     })
 
 
-@app.route("/api/a2a/task", methods=["POST"])
+@app.route("/api/a2a/task", methods=["POST"]) 
 def a2a_task_send():
     data = request.get_json(silent=True) or {}
     agent_url = (data.get("agent_url") or "").strip().rstrip("/")
@@ -477,7 +477,7 @@ def a2a_task_send():
     try:
         endpoint = f"{agent_url}/api/a2a/task/receive"
         payload = {
-            "from": "Solar8",
+            "from": "Sol Calarbone 8",
             "from_url": SOLAR8_URL,
             "task_id": task_id,
             "message": message,
@@ -508,7 +508,7 @@ def a2a_task_send():
         return jsonify({"status": "error", "task_id": task_id, "message": "Task send failed. Check logs."}), 502
 
 
-@app.route("/api/a2a/task/receive", methods=["POST"])
+@app.route("/api/a2a/task/receive", methods=["POST"]) 
 def a2a_task_receive():
     data = request.get_json(silent=True) or {}
     from_agent = data.get("from", "unknown")
@@ -522,7 +522,7 @@ def a2a_task_receive():
         if solar8.online:
             response_text = solar8.chat(message=message, history=[])
         else:
-            response_text = "Solar8 offline — API key not configured."
+            response_text = "Sol Calarbone 8 offline — API key not configured."
         banks.log_a2a_task(task_id=task_id, direction="inbound",
                            agent_name=from_agent, agent_url=from_url,
                            message=message, response=response_text,
@@ -530,7 +530,7 @@ def a2a_task_receive():
         return jsonify({
             "status": "ok",
             "task_id": task_id,
-            "from": "Solar8",
+            "from": "Sol Calarbone 8",
             "response": response_text
         })
     except Exception as e:
@@ -551,10 +551,10 @@ def a2a_tasks_list():
         return jsonify({"status": "error", "message": "Could not retrieve A2A tasks. Check logs."}), 500
 
 
-@app.route("/api/reorient", methods=["POST"])
+@app.route("/api/reorient", methods=["POST"]) 
 def reorient():
     if not solar8.online:
-        return jsonify({"status": "error", "message": "Solar8 offline — API key not configured."}), 503
+        return jsonify({"status": "error", "message": "Sol Calarbone 8 offline — API key not configured."}), 503
     try:
         entries = memory_log.get_full_log(limit=50)
         log_context = memory_log.format_log_for_context(entries)
@@ -585,10 +585,10 @@ def memory_log_view():
         return jsonify({"status": "error", "message": "Could not retrieve memory log. Check logs."}), 500
 
 
-@app.route("/api/memory/force", methods=["POST"])
+@app.route("/api/memory/force", methods=["POST"]) 
 def memory_force():
     if not solar8.memory_manager:
-        return jsonify({"status": "error", "message": "Memory manager not available (Solar8 offline?)."}), 503
+        return jsonify({"status": "error", "message": "Memory manager not available (Sol Calarbone 8 offline?)."}), 503
     data = request.get_json(silent=True) or {}
     note = data.get("note", "").strip()
     try:
