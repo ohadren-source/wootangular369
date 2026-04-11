@@ -264,6 +264,8 @@
       transition: color 0.15s, border-color 0.15s;
     }
     .paperclip-btn:hover { color: #a0b4ff; border-color: #3a3a5c; }
+    #mic-btn.listening { color: #ff6b6b; border-color: #5c3a3a; background: #2e1a1a; animation: pulse-mic 1s infinite; }
+    @keyframes pulse-mic { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
     #msg-input {
       flex: 1;
       background: #111;
@@ -495,6 +497,7 @@
 
   <div id="input-bar">
     <button class="paperclip-btn" id="paperclip-btn" title="Attach file">📎</button>
+    <button class="paperclip-btn" id="mic-btn" title="Voice input">🎤</button>
     <input type="file" id="file-input" accept="image/*,.pdf,.txt,.py,.js,.ts,.md,.json,.csv,.html,.css" style="display:none" multiple />
     <textarea id="msg-input" placeholder="Say something…" rows="1"></textarea>
     <button id="send-btn">Send</button>
@@ -1112,6 +1115,60 @@
       }
       checkMobile();
       window.addEventListener('resize', checkMobile);
+    })();
+
+    // ── Microphone — Web Speech API (free, browser-native) ──
+    (function() {
+      var micBtn = document.getElementById('mic-btn');
+      if (!micBtn) return;
+
+      var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        micBtn.style.display = 'none';
+        return;
+      }
+
+      var recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+      var listening = false;
+
+      micBtn.addEventListener('click', function() {
+        if (listening) {
+          recognition.stop();
+          return;
+        }
+        recognition.start();
+      });
+
+      recognition.onstart = function() {
+        listening = true;
+        micBtn.classList.add('listening');
+        micBtn.textContent = '⏹';
+      };
+
+      recognition.onresult = function(event) {
+        var transcript = '';
+        for (var i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        var input = document.getElementById('msg-input');
+        if (input) input.value = transcript;
+      };
+
+      recognition.onend = function() {
+        listening = false;
+        micBtn.classList.remove('listening');
+        micBtn.textContent = '🎤';
+      };
+
+      recognition.onerror = function(event) {
+        listening = false;
+        micBtn.classList.remove('listening');
+        micBtn.textContent = '🎤';
+        if (event.error !== 'aborted') console.warn('Speech recognition error:', event.error);
+      };
     })();
   </script>
 </body>
