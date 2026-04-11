@@ -206,7 +206,10 @@ def get_recent_fusions(seconds: int = 369):
 
 
 def ensure_a2a_tasks_table():
-    sql = """
+    # No CHECK constraint on status — validated in app code for migration safety.
+    # Lifecycle: submitted → working → completed → failed → cancelled
+    # Legacy values: pending, error, complete — remain valid.
+    sql_table = """
     CREATE TABLE IF NOT EXISTS wootangular_a2a_tasks (
         id          SERIAL PRIMARY KEY,
         task_id     TEXT NOT NULL,
@@ -215,21 +218,27 @@ def ensure_a2a_tasks_table():
         agent_url   TEXT,
         message     TEXT,
         response    TEXT,
-        status      TEXT DEFAULT 'pending',
-        created_at  TIMESTAMPTZ DEFAULT now()
+        status      TEXT DEFAULT 'submitted',
+        created_at  TIMESTAMPTZ DEFAULT now(),
+        updated_at  TIMESTAMPTZ DEFAULT now()
     );
+    """
+    sql_add_updated_at = """
+    ALTER TABLE wootangular_a2a_tasks
+        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
     """
     try:
         with get_db_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(sql)
+                cur.execute(sql_table)
+                cur.execute(sql_add_updated_at)
             conn.commit()
         logger.info("wootangular_a2a_tasks table ensured.")
     except Exception as e:
         logger.warning("Could not ensure wootangular_a2a_tasks: %s", e)
 
 def log_a2a_task(task_id, direction, agent_name=None, agent_url=None,
-                 message=None, response=None, status="pending"):
+                 message=None, response=None, status="submitted"):
     sql = """
     INSERT INTO wootangular_a2a_tasks
         (task_id, direction, agent_name, agent_url, message, response, status)
@@ -246,6 +255,40 @@ def log_a2a_task(task_id, direction, agent_name=None, agent_url=None,
         return row[0] if row else None
     except Exception as e:
         logger.error("log_a2a_task failed: %s", e)
+        return None
+
+def update_a2a_task_status(task_id, new_status, response=None):
+    """Update the lifecycle status of an A2A task. Optionally store response."""
+    sql = """
+    UPDATE wootangular_a2a_tasks
+    SET status = %s, updated_at = now()
+    WHERE task_id = %s;
+    """
+    sql_with_response = """
+    UPDATE wootangular_a2a_tasks
+    SET status = %s, response = %s, updated_at = now()
+    WHERE task_id = %s;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                if response is not None:
+                    cur.execute(sql_with_response, (new_status, response, task_id))
+                else:
+                    cur.execute(sql, (new_status, task_id))
+            conn.commit()
+    except Exception as e:
+        logger.error("update_a2a_task_status failed: %s", e)
+
+def get_a2a_task(task_id):
+    sql = "SELECT * FROM wootangular_a2a_tasks WHERE task_id = %s ORDER BY created_at DESC LIMIT 1;"
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql, (task_id,))
+                return cur.fetchone()
+    except Exception as e:
+        logger.error("get_a2a_task failed: %s", e)
         return None
 
 def get_a2a_tasks(limit=50):
@@ -325,6 +368,166 @@ def query_resonance(threshold):
         logger.error("query_resonance failed: %s", e)
         return []
 
+def ensure_covenant_tokens_table():
+    sql = """
+    CREATE TABLE IF NOT EXISTS wootangular_covenant_tokens (
+        id          SERIAL PRIMARY KEY,
+        covenant_id INT NOT NULL,
+        token       TEXT NOT NULL UNIQUE,
+        agent_name  TEXT,
+        created_at  TIMESTAMPTZ DEFAULT now(),
+        revoked_at  TIMESTAMPTZ
+    );
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+            conn.commit()
+        logger.info("wootangular_covenant_tokens table ensured.")
+    except Exception as e:
+        logger.warning("Could not ensure wootangular_covenant_tokens: %s", e)
+
+def create_covenant_token(covenant_id, agent_name=None):
+    """Generate a uuid4 token, store it, return the token string."""
+    import uuid as _uuid
+    token = str(_uuid.uuid4())
+    sql = """
+    INSERT INTO wootangular_covenant_tokens (covenant_id, token, agent_name)
+    VALUES (%s, %s, %s)
+    RETURNING id;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (covenant_id, token, agent_name))
+            conn.commit()
+        return token
+    except Exception as e:
+        logger.error("create_covenant_token failed: %s", e)
+        return None
+
+def validate_covenant_token(token):
+    """Return the token row if valid (not revoked), else None."""
+    sql = """
+    SELECT * FROM wootangular_covenant_tokens
+    WHERE token = %s AND revoked_at IS NULL;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql, (token,))
+                return cur.fetchone()
+    except Exception as e:
+        logger.error("validate_covenant_token failed: %s", e)
+        return None
+
+def revoke_covenant_token(token):
+    """Revoke a covenant token by setting revoked_at."""
+    sql = """
+    UPDATE wootangular_covenant_tokens
+    SET revoked_at = now()
+    WHERE token = %s;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (token,))
+            conn.commit()
+        logger.info("Covenant token revoked.")
+    except Exception as e:
+        logger.error("revoke_covenant_token failed: %s", e)
+
+def ensure_agent_registry_table():
+    sql = """
+    CREATE TABLE IF NOT EXISTS wootangular_agent_registry (
+        id          SERIAL PRIMARY KEY,
+        agent_name  TEXT NOT NULL,
+        agent_url   TEXT NOT NULL UNIQUE,
+        agent_card  JSONB,
+        last_seen   TIMESTAMPTZ DEFAULT now(),
+        status      TEXT DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'banned')),
+        discovered_via TEXT DEFAULT 'manual'
+    );
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+            conn.commit()
+        logger.info("wootangular_agent_registry table ensured.")
+    except Exception as e:
+        logger.warning("Could not ensure wootangular_agent_registry: %s", e)
+
+def register_agent(name, url, card=None, discovered_via="manual"):
+    """Insert or update agent in registry. Returns registry id."""
+    sql = """
+    INSERT INTO wootangular_agent_registry (agent_name, agent_url, agent_card, discovered_via)
+    VALUES (%s, %s, %s, %s)
+    ON CONFLICT (agent_url) DO UPDATE SET
+        agent_name     = EXCLUDED.agent_name,
+        agent_card     = EXCLUDED.agent_card,
+        last_seen      = now(),
+        status         = 'active',
+        discovered_via = EXCLUDED.discovered_via
+    RETURNING id;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (name, url, json.dumps(card) if card else None, discovered_via))
+                row = cur.fetchone()
+            conn.commit()
+        logger.info("[REGISTRY] Registered agent: %s @ %s", name, url)
+        return row[0] if row else None
+    except Exception as e:
+        logger.error("register_agent failed: %s", e)
+        return None
+
+def get_registry(status="active"):
+    sql = """
+    SELECT * FROM wootangular_agent_registry
+    WHERE status = %s
+    ORDER BY last_seen DESC;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql, (status,))
+                return cur.fetchall()
+    except Exception as e:
+        logger.error("get_registry failed: %s", e)
+        return []
+
+def update_agent_last_seen(url):
+    sql = """
+    UPDATE wootangular_agent_registry
+    SET last_seen = now()
+    WHERE agent_url = %s;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (url,))
+            conn.commit()
+    except Exception as e:
+        logger.error("update_agent_last_seen failed: %s", e)
+
+def ban_agent(url, reason=None):
+    sql = """
+    UPDATE wootangular_agent_registry
+    SET status = 'banned'
+    WHERE agent_url = %s;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (url,))
+            conn.commit()
+        logger.warning("[REGISTRY] Agent banned: %s — %s", url, reason or "no reason given")
+    except Exception as e:
+        logger.error("ban_agent failed: %s", e)
+
 def ensure_all_tables():
     """Called once on startup. Idempotent. Safe to call every boot."""
     ensure_agents_table()
@@ -335,6 +538,8 @@ def ensure_all_tables():
     ensure_fusion_table()
     ensure_a2a_tasks_table()
     ensure_resonance_table()
+    ensure_covenant_tokens_table()
+    ensure_agent_registry_table()
     seed_imperial_decrees()
 
     logger.info("All wootangular tables ensured. Swarm is ready.")

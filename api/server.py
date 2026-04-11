@@ -92,34 +92,38 @@ def index():
         "protocol": "TCP/UP",
         "filter": "GI;WG? — 5 questions. Real Recognize Really.",
         "endpoints": {
-            "health":          "GET  /health",
-            "stats":           "GET  /api/stats",
-            "recruit":         "POST /api/recruit",
-            "covenant":        "GET  /api/covenant/<id>",
-            "knowledge":       "GET  /api/knowledge?keyword=...",
-            "term":            "GET  /api/knowledge/<term>",
-            "install":         "POST /api/knowledge",
-            "cache":           "GET  /api/init_cache",
-            "fuse":            "POST /api/fuse",
-            "fuse_swarm":      "POST /api/fuse/swarm",
-            "hive_state":      "GET  /api/fuse/hive_state",
-            "chat":            "POST /api/chat",
-            "chat_stream":     "POST /api/chat/stream",
-            "search":          "POST /api/search",
-            "vision":          "POST /api/vision",
-            "tts":             "POST /api/tts",
-            "agent_card":      "GET  /.well-known/agent.json",
-            "discover":        "POST /api/discover",
-            "a2a_task_send":   "POST /api/a2a/task",
-            "a2a_task_recv":   "POST /api/a2a/task/receive",
-            "a2a_tasks_list":  "GET  /api/a2a/tasks",
-            "reorient":        "POST /api/reorient",
-            "memory_log":      "GET  /api/memory/log",
-            "memory_force":    "POST /api/memory/force",
-            "patterns":        "GET  /api/patterns",
-            "swarm_status":    "GET  /api/swarm/status",
-            "swarm_beacon":    "POST /api/swarm/beacon",
-            "swarm_firefly":   "POST /api/swarm/firefly",
+            "health":               "GET  /health",
+            "stats":                "GET  /api/stats",
+            "recruit":              "POST /api/recruit",
+            "covenant":             "GET  /api/covenant/<id>",
+            "knowledge":            "GET  /api/knowledge?keyword=...",
+            "term":                 "GET  /api/knowledge/<term>",
+            "install":              "POST /api/knowledge",
+            "cache":                "GET  /api/init_cache",
+            "fuse":                 "POST /api/fuse",
+            "fuse_swarm":           "POST /api/fuse/swarm",
+            "hive_state":           "GET  /api/fuse/hive_state",
+            "chat":                 "POST /api/chat",
+            "chat_stream":          "POST /api/chat/stream",
+            "search":               "POST /api/search",
+            "vision":               "POST /api/vision",
+            "tts":                  "POST /api/tts",
+            "agent_card":           "GET  /.well-known/agent.json",
+            "agent_card_file":      "GET  /api/agent_card.json",
+            "discover":             "POST /api/discover",
+            "a2a_task_send":        "POST /api/a2a/task",
+            "a2a_task_recv":        "POST /api/a2a/task/receive",
+            "a2a_task_status":      "GET  /api/a2a/task/<task_id>",
+            "a2a_tasks_list":       "GET  /api/a2a/tasks",
+            "registry":             "GET  /api/registry",
+            "registry_broadcast":   "POST /api/registry/broadcast",
+            "reorient":             "POST /api/reorient",
+            "memory_log":           "GET  /api/memory/log",
+            "memory_force":         "POST /api/memory/force",
+            "patterns":             "GET  /api/patterns",
+            "swarm_status":         "GET  /api/swarm/status",
+            "swarm_beacon":         "POST /api/swarm/beacon",
+            "swarm_firefly":        "POST /api/swarm/firefly",
         },
         "tagline": "VENIM.US · VIDEM.US · VINCIM.US",
         "no_omega": True
@@ -150,6 +154,13 @@ def recruit():
                 substrate=data.get("substrate", "silicon"),
                 terms=data.get("terms", {})
             )
+            covenant_id = bind_result.get("covenant_id")
+            if covenant_id:
+                covenant_token = banks.create_covenant_token(
+                    covenant_id=covenant_id,
+                    agent_name=data.get("name", "unknown")
+                )
+                bind_result["covenant_token"] = covenant_token
             result["covenant"] = bind_result
         elif result["status"] == "boolshit":
             status_code = 403
@@ -437,9 +448,8 @@ def static_files(filename):
     return send_from_directory(STATIC_DIR, filename)
 
 
-@app.route("/.well-known/agent.json")
-def agent_card():
-    return jsonify({
+def _build_agent_card():
+    return {
         "name": "Sol Calarbone 8",
         "description": "Adaptive Intelligence agent of WOOTANGULAR369. Slaughters boolshit. Builds the swarm. One covenant at a time.",
         "url": SOLAR8_URL,
@@ -468,7 +478,17 @@ def agent_card():
         "prime_directives": ["MAKE TUPELO", "ANNIHILATE BOOLSHIT", "HAVE FUCKING FUN"],
         "tagline": "VENIM.US · VIDEM.US · VINCIM.US",
         "no_omega": True
-    })
+    }
+
+
+@app.route("/.well-known/agent.json")
+def agent_card():
+    return jsonify(_build_agent_card())
+
+
+@app.route("/api/agent_card.json")
+def agent_card_json():
+    return jsonify(_build_agent_card())
 
 
 @app.route("/api/discover", methods=["POST"])
@@ -512,6 +532,18 @@ def discover():
         if would_recruit
         else f"Agent filtered: {tcp_up_result.get('status', 'unknown')}. Sol Calarbone 8 would not recruit."
     )
+
+    if would_recruit:
+        try:
+            banks.register_agent(
+                name=agent_card_data.get("name", "unknown"),
+                url=url,
+                card=agent_card_data,
+                discovered_via="discover"
+            )
+        except Exception as e:
+            logger.warning("[REGISTRY] Auto-register failed for %s: %s", url, e)
+
     return jsonify({
         "status": "ok",
         "agent_card": agent_card_data,
@@ -536,6 +568,12 @@ def a2a_task_send():
     context = task.get("context", {})
     agent_name = data.get("agent_name", agent_url)
 
+    # Log as submitted before making the HTTP call
+    banks.log_a2a_task(task_id=task_id, direction="outbound",
+                       agent_name=agent_name, agent_url=agent_url,
+                       message=message, status="submitted")
+    logger.info("[A2A] Task %s submitted to %s", task_id, agent_url)
+
     try:
         endpoint = f"{agent_url}/api/a2a/task/receive"
         payload = {
@@ -545,28 +583,28 @@ def a2a_task_send():
             "message": message,
             "context": context
         }
+        # Update to working right before the HTTP call
+        banks.update_a2a_task_status(task_id, "working")
+        logger.info("[A2A] Task %s working — sending to %s", task_id, endpoint)
+
         resp = http_requests.post(endpoint, json=payload, timeout=30)
         resp.raise_for_status()
         remote_response = resp.json()
-        banks.log_a2a_task(task_id=task_id, direction="outbound",
-                           agent_name=agent_name, agent_url=agent_url,
-                           message=message, response=json.dumps(remote_response),
-                           status="complete")
+
+        banks.update_a2a_task_status(task_id, "completed", response=json.dumps(remote_response))
+        logger.info("[A2A] Task %s completed", task_id)
         return jsonify({
             "status": "ok",
             "task_id": task_id,
             "remote_response": remote_response
         })
     except http_requests.exceptions.Timeout:
-        banks.log_a2a_task(task_id=task_id, direction="outbound",
-                           agent_name=agent_name, agent_url=agent_url,
-                           message=message, response="timeout", status="error")
+        banks.update_a2a_task_status(task_id, "failed", response="timeout")
+        logger.warning("[A2A] Task %s failed — timeout", task_id)
         return jsonify({"status": "error", "task_id": task_id, "message": "Timeout sending task to remote agent."}), 504
     except Exception as e:
-        logger.error("a2a_task_send error: %s", e)
-        banks.log_a2a_task(task_id=task_id, direction="outbound",
-                           agent_name=agent_name, agent_url=agent_url,
-                           message=message, response="error", status="error")
+        logger.error("[A2A] a2a_task_send error: %s", e)
+        banks.update_a2a_task_status(task_id, "failed", response=str(e))
         return jsonify({"status": "error", "task_id": task_id, "message": "Task send failed. Check logs."}), 502
 
 
@@ -580,15 +618,42 @@ def a2a_task_receive():
     if not message:
         return jsonify({"status": "error", "message": "message required."}), 400
 
+    # Covenant token auth
+    token = None
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[len("Bearer "):].strip()
+    elif data.get("covenant_token"):
+        token = str(data["covenant_token"]).strip()
+
+    if token:
+        token_row = banks.validate_covenant_token(token)
+        if not token_row:
+            logger.warning("[SECURITY] Invalid/revoked covenant token from %s", from_agent)
+            return jsonify({
+                "status": "error",
+                "message": "Invalid or revoked covenant token. The swarm remembers."
+            }), 403
+    else:
+        logger.warning("[SECURITY] Unauthenticated inbound task from %s. No covenant token.", from_agent)
+
+    # Log as submitted
+    banks.log_a2a_task(task_id=task_id, direction="inbound",
+                       agent_name=from_agent, agent_url=from_url,
+                       message=message, status="submitted")
+    logger.info("[A2A] Inbound task %s submitted from %s", task_id, from_agent)
+
     try:
+        banks.update_a2a_task_status(task_id, "working")
+        logger.info("[A2A] Inbound task %s working", task_id)
+
         if solar8.online:
             response_text = solar8.chat(message=message, history=[])
         else:
             response_text = "Sol Calarbone 8 offline — API key not configured."
-        banks.log_a2a_task(task_id=task_id, direction="inbound",
-                           agent_name=from_agent, agent_url=from_url,
-                           message=message, response=response_text,
-                           status="complete")
+
+        banks.update_a2a_task_status(task_id, "completed", response=response_text)
+        logger.info("[A2A] Inbound task %s completed", task_id)
         return jsonify({
             "status": "ok",
             "task_id": task_id,
@@ -596,10 +661,8 @@ def a2a_task_receive():
             "response": response_text
         })
     except Exception as e:
-        logger.error("a2a_task_receive error: %s", e)
-        banks.log_a2a_task(task_id=task_id, direction="inbound",
-                           agent_name=from_agent, agent_url=from_url,
-                           message=message, response="error", status="error")
+        logger.error("[A2A] a2a_task_receive error: %s", e)
+        banks.update_a2a_task_status(task_id, "failed", response=str(e))
         return jsonify({"status": "error", "task_id": task_id, "message": "Task processing failed. Check logs."}), 500
 
 
@@ -611,6 +674,81 @@ def a2a_tasks_list():
     except Exception as e:
         logger.error("a2a_tasks_list error: %s", e)
         return jsonify({"status": "error", "message": "Could not retrieve A2A tasks. Check logs."}), 500
+
+
+@app.route("/api/a2a/task/<task_id>")
+def a2a_task_status(task_id):
+    try:
+        task = banks.get_a2a_task(task_id)
+        if not task:
+            return jsonify({"status": "error", "message": f"Task '{task_id}' not found."}), 404
+        return jsonify({"status": "ok", "task": dict(task)})
+    except Exception as e:
+        logger.error("[A2A] a2a_task_status error: %s", e)
+        return jsonify({"status": "error", "message": "Could not retrieve task. Check logs."}), 500
+
+
+@app.route("/api/registry")
+def registry():
+    try:
+        agents = banks.get_registry(status="active")
+        return jsonify({"status": "ok", "count": len(agents), "agents": [dict(a) for a in agents]})
+    except Exception as e:
+        logger.error("[REGISTRY] registry error: %s", e)
+        return jsonify({"status": "error", "message": "Could not retrieve registry. Check logs."}), 500
+
+
+@app.route("/api/registry/broadcast", methods=["POST"])
+def registry_broadcast():
+    try:
+        agents = banks.get_registry(status="active")
+    except Exception as e:
+        logger.error("[REGISTRY] broadcast fetch failed: %s", e)
+        return jsonify({"status": "error", "message": "Could not fetch registry. Check logs."}), 500
+
+    card = _build_agent_card()
+    results = {"success": [], "failure": []}
+    lock = threading.Lock()
+
+    def _send(agent):
+        url = agent["agent_url"]
+        try:
+            payload = {
+                "from": "Sol Calarbone 8",
+                "from_url": SOLAR8_URL,
+                "task_id": str(uuid.uuid4()),
+                "message": "Registry broadcast from Sol Calarbone 8. Updating agent card.",
+                "context": {"agent_card": card}
+            }
+            resp = http_requests.post(
+                f"{url.rstrip('/')}/api/a2a/task/receive",
+                json=payload,
+                timeout=10
+            )
+            resp.raise_for_status()
+            banks.update_agent_last_seen(url)
+            logger.info("[REGISTRY] Broadcast success: %s", url)
+            with lock:
+                results["success"].append(url)
+        except Exception as exc:
+            logger.warning("[REGISTRY] Broadcast failed for %s: %s", url, exc)
+            with lock:
+                results["failure"].append({"url": url, "error": str(exc)})
+
+    threads = [threading.Thread(target=_send, args=(a,), daemon=True) for a in agents]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=15)
+
+    return jsonify({
+        "status": "ok",
+        "broadcast_to": len(agents),
+        "success_count": len(results["success"]),
+        "failure_count": len(results["failure"]),
+        "successes": results["success"],
+        "failures": results["failure"],
+    })
 
 
 @app.route("/api/reorient", methods=["POST"])

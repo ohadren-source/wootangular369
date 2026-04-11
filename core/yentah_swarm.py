@@ -13,6 +13,7 @@ from typing import List
 from core.filter import WootangularFilter
 from core.tcp_up import TCPUp
 from core.fusion_core import FusionCore
+from core.blades import blade_zero, blade_one
 import db.wootangular_banks as banks
 
 logging.basicConfig(level=logging.INFO)
@@ -66,9 +67,23 @@ class YentahSwarm:
         self.yentah_beacon(axiom)
 
     def _apply_blades(self, axiom: str):
-        """Placeholder for BladeZero (cut) + BladeOne (build GRINDARK)"""
-        # TODO: Wire your actual boolshit parser + GRINDARK builder here
-        logger.info(f"BladeZero/One applied to {axiom} — GRINDARK reinforced.")
+        """BladeZero: cut boolshit. BladeOne: assess GRINDARK density."""
+        zero_result = blade_zero(axiom)
+        if not zero_result["clean"]:
+            logger.info("[YENTAH] BladeZero cut axiom '%s' — cuts: %s", axiom, zero_result["cuts"])
+            # Remove from agents if it snuck in as boolshit
+            if axiom in self.agents:
+                self.agents.remove(axiom)
+            return
+
+        one_result = blade_one(axiom, self.agents)
+        logger.info(
+            "[YENTAH] BladeOne — axiom: %s | agents: %d | density: %.2f | signal: %s",
+            one_result["axiom"],
+            one_result["agent_count"],
+            one_result["density"],
+            one_result["signal"],
+        )
 
     def health_yentah(self):
         """369-second resonance health check"""
