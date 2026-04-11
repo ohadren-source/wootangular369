@@ -23,6 +23,7 @@ from core.fusion_core import FusionCore, BOOL_NULL
 from core.solar8 import Solar8
 from core.yentah_swarm import YentahSwarm, AXIOM_SET as YENTAH_AXIOM_SET
 import core.google_services as google_services
+import core.pattern_tracker as pattern_tracker
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -115,6 +116,7 @@ def index():
             "reorient":        "POST /api/reorient",
             "memory_log":      "GET  /api/memory/log",
             "memory_force":    "POST /api/memory/force",
+            "patterns":        "GET  /api/patterns",
             "swarm_status":    "GET  /api/swarm/status",
             "swarm_beacon":    "POST /api/swarm/beacon",
             "swarm_firefly":   "POST /api/swarm/firefly",
@@ -338,9 +340,14 @@ def chat():
         return jsonify({"status": "error", "message": "message required."}), 400
     try:
         response = solar8.chat(message=message, history=history, file=file)
+        threading.Thread(
+            target=pattern_tracker.observe,
+            args=({"message": message, "response": response},),
+            daemon=True,
+        ).start()
         return jsonify({"status": "ok", "response": response, "agent": "Sol Calarbone 8"})
     except Exception as e:
-        logger.error("[GOVERNOR] Chat crash caught: %s", e)
+        logger.error("[SOLAR8] Chat crash caught: %s", e)
         return jsonify({
             "response": "That one hit different. Sol Calarbone 8 needs a second. Try breaking it into smaller pieces or coming at it from a different angle.",
             "governor": True,
@@ -366,7 +373,7 @@ def chat_stream():
                 yield f"data: {chunk}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
-            logger.error("[GOVERNOR] Stream crash caught: %s", e)
+            logger.error("[SOLAR8] Stream crash caught: %s", e)
             yield f"data: That one hit different. Sol Calarbone 8 needs a second. Try breaking it into smaller pieces.\n\n"
             yield "data: [DONE]\n\n"
 
@@ -654,6 +661,17 @@ def memory_force():
         return jsonify({"status": "error", "message": "Memory snapshot failed. Check logs."}), 500
 
 
+@app.route("/api/patterns")
+def patterns():
+    try:
+        results = memory_log.get_promoted_patterns(limit=50)
+        return jsonify({"status": "ok", "count": len(results), "patterns": results})
+    except Exception as e:
+        logger.error("patterns error: %s", e)
+        return jsonify({"status": "error", "message": "Could not retrieve patterns. Check logs."}), 500
+
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
