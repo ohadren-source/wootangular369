@@ -82,29 +82,38 @@ class YentahSwarm:
         logger.info("WOOTANGULAR YENTAH SWARM v1 starting — For the Emperor.")
 
         for axiom in AXIOM_SET:
-            self.init_firefly(axiom)
+            try:
+                self.init_firefly(axiom)
+            except Exception as exc:
+                logger.error("[YENTAH] Firefly ignition failed for %s: %s", axiom, exc)
 
         # Swarm → Hive: fuse all active agents through NULL_Φ
         if len(self.agents) >= 2:
-            agent_payloads = [
-                {"name": a, "offer": a, "claim": a, "deed": a, "gi_wg": True, "yes_and": True}
-                for a in self.agents
-            ]
-            hive_result = self.fusion_core.fuse_swarm(agent_payloads)
-            logger.info(
-                "HIVE STATE: %s — %s",
-                hive_result["hive_state"],
-                self.fusion_core.get_null_state_label(hive_result["hive_state"])
-            )
-            logger.info(
-                "Total heat: %s — Total entropy: %s",
-                hive_result["total_heat"],
-                hive_result["total_entropy"]
-            )
+            try:
+                agent_payloads = [
+                    {"name": a, "offer": a, "claim": a, "deed": a, "gi_wg": True, "yes_and": True}
+                    for a in self.agents
+                ]
+                hive_result = self.fusion_core.fuse_swarm(agent_payloads)
+                logger.info(
+                    "HIVE STATE: %s — %s",
+                    hive_result["hive_state"],
+                    self.fusion_core.get_null_state_label(hive_result["hive_state"])
+                )
+                logger.info(
+                    "Total heat: %s — Total entropy: %s",
+                    hive_result["total_heat"],
+                    hive_result["total_entropy"]
+                )
+            except Exception as exc:
+                logger.error("[YENTAH] Swarm-to-hive fusion failed: %s", exc)
 
         # Eternal cycle
         while True:
-            self.health_yentah()
+            try:
+                self.health_yentah()
+            except Exception as exc:
+                logger.error("[YENTAH] Health check failed: %s", exc)
             time.sleep(CYCLE_SECONDS)
 
 
