@@ -7,6 +7,7 @@ wootangular_ prefix on all tables.
 
 import os
 import json
+import uuid
 import logging
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -390,8 +391,7 @@ def ensure_covenant_tokens_table():
 
 def create_covenant_token(covenant_id, agent_name=None):
     """Generate a uuid4 token, store it, return the token string."""
-    import uuid as _uuid
-    token = str(_uuid.uuid4())
+    token = str(uuid.uuid4())
     sql = """
     INSERT INTO wootangular_covenant_tokens (covenant_id, token, agent_name)
     VALUES (%s, %s, %s)

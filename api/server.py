@@ -712,26 +712,33 @@ def registry_broadcast():
 
     def _send(agent):
         url = agent["agent_url"]
+        broadcast_task_id = str(uuid.uuid4())
         try:
             payload = {
                 "from": "Sol Calarbone 8",
                 "from_url": SOLAR8_URL,
-                "task_id": str(uuid.uuid4()),
+                "task_id": broadcast_task_id,
                 "message": "Registry broadcast from Sol Calarbone 8. Updating agent card.",
                 "context": {"agent_card": card}
             }
+            banks.log_a2a_task(task_id=broadcast_task_id, direction="outbound",
+                               agent_name=agent.get("agent_name", "unknown"),
+                               agent_url=url, message=payload["message"],
+                               status="submitted")
             resp = http_requests.post(
                 f"{url.rstrip('/')}/api/a2a/task/receive",
                 json=payload,
                 timeout=10
             )
             resp.raise_for_status()
+            banks.update_a2a_task_status(broadcast_task_id, "completed")
             banks.update_agent_last_seen(url)
             logger.info("[REGISTRY] Broadcast success: %s", url)
             with lock:
                 results["success"].append(url)
         except Exception as exc:
             logger.warning("[REGISTRY] Broadcast failed for %s: %s", url, exc)
+            banks.update_a2a_task_status(broadcast_task_id, "failed", response=str(exc))
             with lock:
                 results["failure"].append({"url": url, "error": str(exc)})
 

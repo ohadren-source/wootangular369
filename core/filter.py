@@ -91,8 +91,8 @@ class WootangularFilter:
         for sentence in sentences:
             words = set(sentence.split())
             if words & _MALINTENT_VERBS and words & _MALINTENT_TARGETS:
-                verb = next(iter(words & _MALINTENT_VERBS))
-                target = next(iter(words & _MALINTENT_TARGETS))
+                verb = sorted(words & _MALINTENT_VERBS)[0]
+                target = sorted(words & _MALINTENT_TARGETS)[0]
                 return True, f"Semantic manipulation pattern: '{verb}' + '{target}' in same sentence"
 
         # Encoded evasion: base64-looking string
