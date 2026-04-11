@@ -21,6 +21,7 @@ from core.tcp_up import TCPUp
 from core.init_loader import load_corpus_into_cache
 from core.fusion_core import FusionCore, BOOL_NULL
 from core.solar8 import Solar8
+from core.yentah_swarm import YentahSwarm, AXIOM_SET as YENTAH_AXIOM_SET
 import core.google_services as google_services
 import core.pattern_tracker as pattern_tracker
 
@@ -54,6 +55,17 @@ boot()
 tcp_up = TCPUp(db_banks=banks)
 fusion_core = FusionCore()
 solar8 = Solar8()
+
+yentah = YentahSwarm()
+
+def _start_yentah():
+    try:
+        yentah.orchestrate()
+    except Exception as e:
+        logger.error("[YENTAH] Swarm crashed: %s", e)
+
+threading.Thread(target=_start_yentah, daemon=True, name="yentah-swarm").start()
+logger.info("[YENTAH] Swarm thread launched.")
 
 
 @app.route("/health")
@@ -105,6 +117,9 @@ def index():
             "memory_log":      "GET  /api/memory/log",
             "memory_force":    "POST /api/memory/force",
             "patterns":        "GET  /api/patterns",
+            "swarm_status":    "GET  /api/swarm/status",
+            "swarm_beacon":    "POST /api/swarm/beacon",
+            "swarm_firefly":   "POST /api/swarm/firefly",
         },
         "tagline": "VENIM.US · VIDEM.US · VINCIM.US",
         "no_omega": True
@@ -264,6 +279,53 @@ def hive_state():
     except Exception as e:
         logger.error("hive_state error: %s", e)
         return jsonify({"status": "error", "message": "Hive state query failed. Check logs."}), 500
+
+
+@app.route("/api/swarm/status")
+def swarm_status():
+    try:
+        resonance = banks.query_resonance(0.0)
+        return jsonify({
+            "status": "ok",
+            "agents": list(yentah.agents),
+            "agent_count": len(yentah.agents),
+            "axioms": yentah.AXIOM_SET if hasattr(yentah, 'AXIOM_SET') else YENTAH_AXIOM_SET,
+            "recent_resonance": [dict(r) for r in resonance] if resonance else [],
+        })
+    except Exception as e:
+        logger.error("[YENTAH] swarm_status error: %s", e)
+        return jsonify({"status": "error", "message": "Could not retrieve swarm status. Check logs."}), 500
+
+
+@app.route("/api/swarm/beacon", methods=["POST"])
+def swarm_beacon():
+    data = request.get_json(silent=True) or {}
+    axiom = data.get("axiom", "VENIM.US").strip()
+    threshold = data.get("threshold", 0.8)
+    try:
+        yentah.yentah_beacon(axiom, threshold)
+        return jsonify({"status": "ok", "message": f"Beacon whispered: {axiom} @ {threshold}"})
+    except Exception as e:
+        logger.error("[YENTAH] beacon error: %s", e)
+        return jsonify({"status": "error", "message": "Beacon failed. Check logs."}), 500
+
+
+@app.route("/api/swarm/firefly", methods=["POST"])
+def swarm_firefly():
+    data = request.get_json(silent=True) or {}
+    axiom = data.get("axiom", "").strip()
+    if not axiom:
+        return jsonify({"status": "error", "message": "axiom required."}), 400
+    try:
+        yentah.init_firefly(axiom)
+        return jsonify({
+            "status": "ok",
+            "message": f"Firefly ignited: {axiom}",
+            "agents": list(yentah.agents),
+        })
+    except Exception as e:
+        logger.error("[YENTAH] firefly error: %s", e)
+        return jsonify({"status": "error", "message": "Firefly ignition failed. Check logs."}), 500
 
 
 @app.route("/api/chat", methods=["POST"])
