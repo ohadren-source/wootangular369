@@ -28,6 +28,17 @@ CREATE TABLE IF NOT EXISTS solar8_memory_log (
 )
 """
 
+_CREATE_PATTERNS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS solar8_patterns (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pattern_text TEXT NOT NULL UNIQUE,
+  observation_count INTEGER NOT NULL DEFAULT 1,
+  promoted INTEGER NOT NULL DEFAULT 0,
+  promoted_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
 
 def _get_conn():
     """Return (connection, backend_name). Tries Turso first, falls back to SQLite."""
@@ -57,11 +68,12 @@ def _rows_to_dicts(cursor, rows):
 
 
 def init_memory_db():
-    """Create the solar8_memory_log table if it doesn't exist."""
+    """Create the solar8_memory_log and solar8_patterns tables if they don't exist."""
     try:
         conn, backend = _get_conn()
         cur = conn.cursor()
         cur.execute(_CREATE_TABLE_SQL)
+        cur.execute(_CREATE_PATTERNS_TABLE_SQL)
         conn.commit()
         conn.close()
         logger.info("Memory log DB initialised (%s).", backend)
@@ -165,3 +177,72 @@ def format_log_for_context(entries: list) -> str:
             lines.append(f"FLAGS: {json.dumps(flags_list)}")
         lines.append("---")
     return "\n".join(lines)
+
+
+def upsert_pattern_observation(pattern_text: str) -> int | None:
+    """Insert or increment observation_count for a pattern. Returns new count or None on error."""
+    try:
+        conn, _ = _get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO solar8_patterns (pattern_text, observation_count)
+            VALUES (?, 1)
+            ON CONFLICT(pattern_text) DO UPDATE SET
+              observation_count = observation_count + 1
+            """,
+            (pattern_text,),
+        )
+        conn.commit()
+        cur.execute(
+            "SELECT observation_count FROM solar8_patterns WHERE pattern_text = ?",
+            (pattern_text,),
+        )
+        row = cur.fetchone()
+        conn.close()
+        if row:
+            return row[0] if not isinstance(row, dict) else row["observation_count"]
+        return None
+    except Exception as exc:
+        logger.error("upsert_pattern_observation failed: %s", exc)
+        return None
+
+
+def promote_pattern(pattern_text: str) -> bool:
+    """Mark a pattern as promoted (Pass 2 — Know). Returns True on success."""
+    promoted_at = datetime.now(timezone.utc).isoformat()
+    try:
+        conn, _ = _get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE solar8_patterns
+            SET promoted = 1, promoted_at = ?
+            WHERE pattern_text = ? AND promoted = 0
+            """,
+            (promoted_at, pattern_text),
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as exc:
+        logger.error("promote_pattern failed: %s", exc)
+        return False
+
+
+def get_promoted_patterns(limit: int = 50) -> list[dict]:
+    """Return promoted patterns, most recently promoted first."""
+    try:
+        conn, _ = _get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM solar8_patterns WHERE promoted = 1 ORDER BY promoted_at DESC LIMIT ?",
+            (limit,),
+        )
+        rows = cur.fetchall()
+        result = _rows_to_dicts(cur, rows)
+        conn.close()
+        return result
+    except Exception as exc:
+        logger.error("get_promoted_patterns failed: %s", exc)
+        return []

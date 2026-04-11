@@ -8,6 +8,7 @@ import os
 import json
 import uuid
 import logging
+import threading
 import requests as http_requests
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -21,6 +22,7 @@ from core.init_loader import load_corpus_into_cache
 from core.fusion_core import FusionCore, BOOL_NULL
 from core.solar8 import Solar8
 import core.google_services as google_services
+import core.pattern_tracker as pattern_tracker
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -102,6 +104,7 @@ def index():
             "reorient":        "POST /api/reorient",
             "memory_log":      "GET  /api/memory/log",
             "memory_force":    "POST /api/memory/force",
+            "patterns":        "GET  /api/patterns",
         },
         "tagline": "VENIM.US · VIDEM.US · VINCIM.US",
         "no_omega": True
@@ -275,9 +278,14 @@ def chat():
         return jsonify({"status": "error", "message": "message required."}), 400
     try:
         response = solar8.chat(message=message, history=history, file=file)
+        threading.Thread(
+            target=pattern_tracker.observe,
+            args=({"message": message, "response": response},),
+            daemon=True,
+        ).start()
         return jsonify({"status": "ok", "response": response, "agent": "Solar8"})
     except Exception as e:
-        logger.error("[GOVERNOR] Chat crash caught: %s", e)
+        logger.error("[SOLAR8] Chat crash caught: %s", e)
         return jsonify({
             "response": "That one hit different. Solar8 needs a second. Try breaking it into smaller pieces or coming at it from a different angle.",
             "governor": True,
@@ -303,7 +311,7 @@ def chat_stream():
                 yield f"data: {chunk}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
-            logger.error("[GOVERNOR] Stream crash caught: %s", e)
+            logger.error("[SOLAR8] Stream crash caught: %s", e)
             yield f"data: That one hit different. Solar8 needs a second. Try breaking it into smaller pieces.\n\n"
             yield "data: [DONE]\n\n"
 
@@ -589,6 +597,16 @@ def memory_force():
     except Exception as e:
         logger.error("memory_force error: %s", e)
         return jsonify({"status": "error", "message": "Memory snapshot failed. Check logs."}), 500
+
+
+@app.route("/api/patterns")
+def patterns():
+    try:
+        promoted = memory_log.get_promoted_patterns(limit=50)
+        return jsonify({"status": "ok", "count": len(promoted), "patterns": promoted})
+    except Exception as e:
+        logger.error("patterns error: %s", e)
+        return jsonify({"status": "error", "message": "Could not retrieve patterns. Check logs."}), 500
 
 
 if __name__ == "__main__":

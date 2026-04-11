@@ -7,6 +7,7 @@ Never forgets. Never loses the thread.
 
 import json
 import logging
+import threading
 from typing import Callable
 
 import db.memory_log as memory_log
@@ -49,11 +50,16 @@ class MemoryManager:
         self._pending_exchanges: list[tuple[str, str]] = []
 
     def record_exchange(self, user_msg: str, assistant_msg: str) -> None:
-        """Increment exchange counter. Trigger summary when threshold is hit."""
+        """Increment exchange counter. Dispatch summary in background when threshold is hit."""
         self.exchange_count += 1
         self._pending_exchanges.append((user_msg, assistant_msg))
         if self.exchange_count % self.auto_append_every == 0:
-            self.trigger_summary(user_msg, assistant_msg)
+            t = threading.Thread(
+                target=self.trigger_summary,
+                args=(user_msg, assistant_msg),
+                daemon=True,
+            )
+            t.start()
 
     def trigger_summary(self, user_msg: str, assistant_msg: str) -> None:
         """Compress recent exchanges into a memory log entry and append it."""

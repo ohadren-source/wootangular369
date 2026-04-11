@@ -143,24 +143,15 @@ def pass_two(message: str, p1_result: str) -> str:
 
 
 def govern(message: str, raw_inference_fn: callable) -> str:
-    """Run the full 3-pass governor sequence and return the final response.
+    """Stub — calls raw_inference directly. Density gating removed per 3-1-2 architecture.
 
-    Sequence: pass_three (receive) → pass_one (think) → pass_two (know).
-    Returns the pass_two result — where understanding lives.
+    Pass 3 (Receive) now fires Claude direct on the chat path.
+    Pass 1 (Think) and Pass 2 (Know) run asynchronously via pattern_tracker.
+    This function is kept for backwards-compatibility but no longer gates.
 
     Args:
         message: The user message to process.
         raw_inference_fn: Callable that takes a prompt string and returns a response string.
     """
-    logger.info("[GOVERNOR] govern — starting 3-pass sequence")
-
-    p3_result = raw_inference_fn(pass_three(message))
-    logger.info("[GOVERNOR] Pass 3 complete — anamnesis received")
-
-    p1_result = raw_inference_fn(pass_one(message, p3_result))
-    logger.info("[GOVERNOR] Pass 1 complete — surface think done")
-
-    p2_result = raw_inference_fn(pass_two(message, p1_result))
-    logger.info("[GOVERNOR] Pass 2 complete — deep know done")
-
-    return p2_result
+    logger.info("[SOLAR8] govern stub — firing direct (3-1-2 architecture)")
+    return raw_inference_fn(message)
