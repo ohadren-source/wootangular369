@@ -86,7 +86,7 @@ def analyze_image(image_base64: str, mime_type: str = "image/jpeg") -> dict:
 
 
 # ── Google Text-to-Speech ─────────────────────────────────
-def text_to_speech(text: str, language_code: str = "en-US", voice_name: str = "en-US-Neural2-D") -> str | None:
+def text_to_speech(text: str, language_code: str = "en-GB", voice_name: str = "en-GB-Neural2-B") -> str | None:
     """Returns base64-encoded MP3 audio or None on failure."""
     api_key = os.getenv("GOOGLE_TTS_API_KEY")
     if not api_key:
