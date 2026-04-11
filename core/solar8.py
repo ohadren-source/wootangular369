@@ -181,7 +181,6 @@ class Solar8:
 
         self._client = anthropic.Anthropic(
             api_key=api_key,
-            default_headers={"anthropic-beta": "prompt-caching-2024-07-31"}
         )
         memory_log.init_memory_db()
         session_id = str(uuid.uuid4())
@@ -242,7 +241,6 @@ class Solar8:
             {
                 "type": "text",
                 "text": full_text,
-                "cache_control": {"type": "ephemeral"}
             }
         ]
 
