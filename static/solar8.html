@@ -134,6 +134,30 @@
     .tts-btn:hover { color: #a0b4ff; border-color: #3a3a5c; }
     .tts-btn:disabled { opacity: 0.4; cursor: default; }
 
+    .copy-btn {
+      background: none;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      color: #555;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 2px 7px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .copy-btn:hover { color: #a0b4ff; border-color: #3a3a5c; }
+
+    .regen-btn {
+      background: none;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      color: #555;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 2px 7px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .regen-btn:hover { color: #a0b4ff; border-color: #3a3a5c; }
+
     .code-wrapper { position: relative; margin: 8px 0; }
     .code-header {
       display: flex;
@@ -507,6 +531,20 @@
       }
       const textNode = document.createTextNode(text);
       bubble.appendChild(textNode);
+      const userActions = document.createElement('div');
+      userActions.className = 'msg-actions';
+      const userCopyBtn = document.createElement('button');
+      userCopyBtn.className = 'copy-btn';
+      userCopyBtn.title = 'Copy message';
+      userCopyBtn.textContent = '📋';
+      userCopyBtn.onclick = () => {
+        navigator.clipboard.writeText(text).then(() => {
+          userCopyBtn.textContent = '✓';
+          setTimeout(() => { userCopyBtn.textContent = '📋'; }, 1500);
+        });
+      };
+      userActions.appendChild(userCopyBtn);
+      bubble.appendChild(userActions);
       row.appendChild(bubble);
       feed.appendChild(row);
       feed.scrollTop = feed.scrollHeight;
@@ -549,6 +587,65 @@
       ttsBtn.textContent = '🔊';
       ttsBtn.onclick = () => playTTS(text, ttsBtn);
       actions.appendChild(ttsBtn);
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'copy-btn';
+      copyBtn.title = 'Copy response';
+      copyBtn.textContent = '📋';
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(text).then(() => {
+          copyBtn.textContent = '✓';
+          setTimeout(() => { copyBtn.textContent = '📋'; }, 1500);
+        });
+      };
+      actions.appendChild(copyBtn);
+      const regenBtn = document.createElement('button');
+      regenBtn.className = 'regen-btn';
+      regenBtn.title = 'Regenerate response';
+      regenBtn.textContent = '🔄';
+      regenBtn.onclick = async () => {
+        if (!history.length || sending) return;
+        const lastUserIdx = history.map(m => m.role).lastIndexOf('user');
+        if (lastUserIdx === -1) return;
+        const lastUserText = history[lastUserIdx].content;
+        history.splice(lastUserIdx);
+        row.remove();
+        regenBtn.disabled = true;
+        sending = true;
+        currentAbortController = new AbortController();
+        sendBtn.textContent = '■ Stop';
+        sendBtn.classList.add('stop-btn');
+        const regenThinking = addThinking('🔍 SolCalarbone8 is thinking…');
+        const regenMsgHistory = [...history];
+        history.push({ role: 'user', content: lastUserText });
+        const regenBody = { message: lastUserText, history: regenMsgHistory };
+        try {
+          const regenRes = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(regenBody),
+            signal: currentAbortController.signal,
+          });
+          const regenData = await regenRes.json();
+          regenThinking.remove();
+          const regenReply = regenData.response || regenData.message || 'No response.';
+          addBotMessage(regenReply);
+          history.push({ role: 'assistant', content: regenReply });
+        } catch (regenErr) {
+          try { regenThinking.remove(); } catch {}
+          if (regenErr.name !== 'AbortError') {
+            addThinking('Error reaching SolCalarbone8. Try again.');
+            history.pop();
+          }
+        } finally {
+          sending = false;
+          currentAbortController = null;
+          sendBtn.textContent = 'Send';
+          sendBtn.classList.remove('stop-btn');
+          sendBtn.disabled = false;
+          input.focus();
+        }
+      };
+      actions.appendChild(regenBtn);
       bubble.appendChild(actions);
 
       row.appendChild(bubble);
