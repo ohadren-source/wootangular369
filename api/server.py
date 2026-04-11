@@ -347,10 +347,15 @@ def chat():
     message = data.get("message", "").strip()
     history = data.get("history", [])
     file = data.get("file") or None
+    files = data.get("files", [])
+    if files:
+        logger.info("[SOLAR8] Chat request with %d file(s)", len(files))
+        if not file:
+            file = files[0]
     if not message:
         return jsonify({"status": "error", "message": "message required."}), 400
     try:
-        response = solar8.chat(message=message, history=history, file=file)
+        response = solar8.chat(message=message, history=history, file=file, files=files if files else None)
         threading.Thread(
             target=pattern_tracker.observe,
             args=({"message": message, "response": response},),
@@ -373,6 +378,11 @@ def chat_stream():
     message = data.get("message", "").strip()
     history = data.get("history", [])
     file = data.get("file") or None
+    files = data.get("files", [])
+    if files:
+        logger.info("[SOLAR8] Chat request with %d file(s)", len(files))
+        if not file:
+            file = files[0]
     if not message:
         return jsonify({"status": "error", "message": "message required."}), 400
 
@@ -380,7 +390,7 @@ def chat_stream():
 
     def generate():
         try:
-            for chunk in solar8.stream(message=message, history=history, file=file):
+            for chunk in solar8.stream(message=message, history=history, file=file, files=files if files else None):
                 yield f"data: {chunk}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:

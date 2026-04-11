@@ -216,7 +216,7 @@
     #input-bar {
       position: fixed;
       bottom: 0; left: 0; right: 0;
-      height: 72px;
+      min-height: 72px; height: auto;
       background: #0a0a0a;
       border-top: 1px solid #1e1e1e;
       display: flex;
@@ -251,7 +251,7 @@
       padding: 10px 14px;
       outline: none;
       resize: none;
-      height: 44px;
+      min-height: 44px; max-height: 120px; overflow-y: auto;
       line-height: 1.4;
       transition: border-color 0.15s;
     }
@@ -279,6 +279,18 @@
       color: #3a3a5c;
     }
     @keyframes blink { 50% { opacity: 0; } }
+
+    .msg.bot strong { color: #e8e8e8; }
+    .msg.bot em { color: #aaa; font-style: italic; }
+    .msg.bot code { background: #1a1a2e; padding: 1px 5px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #c8d8ff; }
+    .msg.bot hr { border: none; border-top: 1px solid #2a2a2a; margin: 8px 0; }
+    .msg.bot a { color: #a0b4ff; text-decoration: underline; }
+    .msg.bot a:hover { color: #c8d8ff; }
+    .msg.bot ul { margin: 4px 0; padding-left: 18px; }
+    .msg.bot li { margin: 2px 0; }
+    .msg-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+    .msg-attachments img { max-height: 120px; border-radius: 8px; }
+    .msg-attachments .file-chip { font-size: 11px; padding: 2px 8px; }
   </style>
 </head>
 <body>
@@ -293,16 +305,11 @@
 
   <div id="feed"></div>
 
-  <div id="chip-bar">
-    <div class="file-chip">
-      <span id="chip-name"></span>
-      <button class="chip-remove" id="chip-remove" title="Remove file">✕</button>
-    </div>
-  </div>
+  <div id="chip-bar"></div>
 
   <div id="input-bar">
     <button class="paperclip-btn" id="paperclip-btn" title="Attach file">📎</button>
-    <input type="file" id="file-input" accept="image/*,.pdf,.txt,.py,.js,.ts,.md,.json,.csv,.html,.css" style="display:none" />
+    <input type="file" id="file-input" accept="image/*,.pdf,.txt,.py,.js,.ts,.md,.json,.csv,.html,.css" style="display:none" multiple />
     <textarea id="msg-input" placeholder="Say something…" rows="1"></textarea>
     <button id="send-btn">Send</button>
   </div>
@@ -314,42 +321,69 @@
     const paperclip  = document.getElementById('paperclip-btn');
     const fileInput  = document.getElementById('file-input');
     const chipBar    = document.getElementById('chip-bar');
-    const chipName   = document.getElementById('chip-name');
-    const chipRemove = document.getElementById('chip-remove');
+    const inputBar   = document.getElementById('input-bar');
 
     let history = [];
-    let attachedFile = null;
+    let pendingFiles = [];
 
     paperclip.addEventListener('click', () => fileInput.click());
 
     fileInput.addEventListener('change', () => {
-      const f = fileInput.files[0];
-      if (!f) return;
-      const isText = /\.(txt|py|js|ts|md|json|csv|html|css)$/i.test(f.name) ||
-        ['text/plain','text/x-python','application/javascript','text/javascript',
-         'text/markdown','application/json','text/csv','text/html','text/css'].includes(f.type);
+      const files = Array.from(fileInput.files);
+      files.forEach(f => {
+        if (pendingFiles.length >= 9) return;
+        const isText = /\.(txt|py|js|ts|md|json|csv|html|css)$/i.test(f.name) ||
+          ['text/plain','text/x-python','application/javascript','text/javascript',
+           'text/markdown','application/json','text/csv','text/html','text/css'].includes(f.type);
 
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const data = e.target.result;
-        if (isText) {
-          attachedFile = { name: f.name, mime_type: f.type || 'text/plain', data, is_text: true };
-        } else {
-          attachedFile = { name: f.name, mime_type: f.type, data: (data.split(',')[1] || data), is_text: false };
-        }
-        chipName.textContent = f.name;
-        chipBar.classList.add('visible');
-        feed.classList.add('with-chip');
-      };
-      isText ? reader.readAsText(f) : reader.readAsDataURL(f);
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const data = e.target.result;
+          const fileObj = isText
+            ? { name: f.name, mime_type: f.type || 'text/plain', data, is_text: true }
+            : { name: f.name, mime_type: f.type, data: (data.split(',')[1] || data), is_text: false, dataUrl: data };
+          pendingFiles.push(fileObj);
+          addChip(fileObj);
+          chipBar.classList.add('visible');
+          feed.classList.add('with-chip');
+          feed.style.bottom = (inputBar.offsetHeight + chipBar.offsetHeight) + 'px';
+        };
+        isText ? reader.readAsText(f) : reader.readAsDataURL(f);
+      });
       fileInput.value = '';
     });
 
-    chipRemove.addEventListener('click', clearAttachment);
+    function addChip(fileObj) {
+      const chip = document.createElement('div');
+      chip.className = 'file-chip';
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = fileObj.name;
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'chip-remove';
+      removeBtn.title = 'Remove file';
+      removeBtn.textContent = '✕';
+      removeBtn.onclick = () => {
+        pendingFiles = pendingFiles.filter(f => f !== fileObj);
+        chip.remove();
+        if (pendingFiles.length === 0) {
+          chipBar.classList.remove('visible');
+          feed.classList.remove('with-chip');
+          feed.style.bottom = inputBar.offsetHeight + 'px';
+        } else {
+          feed.style.bottom = (inputBar.offsetHeight + chipBar.offsetHeight) + 'px';
+        }
+      };
+      chip.appendChild(nameSpan);
+      chip.appendChild(removeBtn);
+      chipBar.appendChild(chip);
+    }
+
     function clearAttachment() {
-      attachedFile = null;
+      pendingFiles = [];
+      chipBar.innerHTML = '';
       chipBar.classList.remove('visible');
       feed.classList.remove('with-chip');
+      feed.style.bottom = inputBar.offsetHeight + 'px';
     }
 
     const LANG_EXT = {
@@ -358,6 +392,26 @@
       sh:'sh', sql:'sql', java:'java', c:'c', cpp:'cpp', go:'go', rust:'rs',
       ruby:'rb', php:'php', yaml:'yaml', toml:'toml',
     };
+
+    input.addEventListener('input', function() {
+      this.style.height = 'auto';
+      this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+      feed.style.bottom = inputBar.offsetHeight + 'px';
+    });
+
+    function renderMarkdown(text) {
+      text = text.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+      text = text.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+      text = text.replace(/(?<!\*)\*(?!\*)([^*\n]+)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+      text = text.replace(/^(---|___|\*\*\*)$/gm, '<hr>');
+      text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+      text = text.replace(/((?:^- .+\n?)+)/gm, (match) => {
+        const items = match.trim().split('\n').map(li => `<li>${li.slice(2)}</li>`).join('');
+        return `<ul>${items}</ul>`;
+      });
+      text = text.replace(/\n/g, '<br>');
+      return text;
+    }
 
     function renderBotContent(text) {
       const parts = text.split(/(```[\s\S]*?```)/g);
@@ -418,20 +472,37 @@
           frag.appendChild(wrapper);
         } else if (part) {
           const span = document.createElement('span');
-          span.style.whiteSpace = 'pre-wrap';
-          span.textContent = part;
+          span.innerHTML = renderMarkdown(part);
           frag.appendChild(span);
         }
       });
       return frag;
     }
 
-    function addUserMessage(text) {
+    function addUserMessage(text, files) {
       const row = document.createElement('div');
       row.className = 'msg-row user';
       const bubble = document.createElement('div');
       bubble.className = 'msg user';
-      bubble.textContent = text;
+      if (files && files.length > 0) {
+        const attachDiv = document.createElement('div');
+        attachDiv.className = 'msg-attachments';
+        files.forEach(f => {
+          if (f.mime_type && f.mime_type.startsWith('image/') && f.dataUrl) {
+            const img = document.createElement('img');
+            img.src = f.dataUrl;
+            attachDiv.appendChild(img);
+          } else {
+            const chip = document.createElement('div');
+            chip.className = 'file-chip';
+            chip.textContent = f.name;
+            attachDiv.appendChild(chip);
+          }
+        });
+        bubble.appendChild(attachDiv);
+      }
+      const textNode = document.createTextNode(text);
+      bubble.appendChild(textNode);
       row.appendChild(bubble);
       feed.appendChild(row);
       feed.scrollTop = feed.scrollHeight;
@@ -510,16 +581,24 @@
       if (!text || sendBtn.disabled) return;
 
       input.value = '';
+      input.style.height = 'auto';
+      feed.style.bottom = inputBar.offsetHeight + 'px';
       sendBtn.disabled = true;
 
-      addUserMessage(text);
+      const filesSnapshot = [...pendingFiles];
+      addUserMessage(text, filesSnapshot.length > 0 ? filesSnapshot : null);
       const thinkingRow = addThinking('🔍 SolCalarbone8 is thinking…');
 
       const msgHistory = [...history];
       history.push({ role: 'user', content: text });
 
       const body = { message: text, history: msgHistory };
-      if (attachedFile) { body.file = attachedFile; clearAttachment(); }
+      if (filesSnapshot.length > 0) {
+        const filesData = filesSnapshot.map(f => ({ name: f.name, mime_type: f.mime_type, data: f.data, is_text: f.is_text }));
+        body.files = filesData;
+        body.file = filesData[0];
+        clearAttachment();
+      }
 
       let fullReply = '';
 
