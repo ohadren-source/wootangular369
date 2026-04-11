@@ -1,6 +1,6 @@
 """
 core/memory_manager.py
-Solar8 memory manager.
+Sol Calarbone 8 memory manager.
 Tracks exchange count, triggers auto-compression, surfaces init context.
 Never forgets. Never loses the thread.
 """
@@ -32,7 +32,7 @@ class MemoryManager:
     Args:
         session_id:         Unique ID for this session (uuid4 recommended).
         auto_append_every:  Number of exchanges before auto-compression triggers.
-        compress_fn:        Callable(prompt: str) -> str.  Should call Solar8's LLM.
+        compress_fn:        Callable(prompt: str) -> str.  Should call Sol Calarbone 8's LLM.
                             If None, a plain-text fallback is used.
     """
 
@@ -58,7 +58,7 @@ class MemoryManager:
     def trigger_summary(self, user_msg: str, assistant_msg: str) -> None:
         """Compress recent exchanges into a memory log entry and append it."""
         exchanges_text = "\n\n".join(
-            f"User: {u}\nSolar8: {a}" for u, a in self._pending_exchanges
+            f"User: {u}\nSol Calarbone 8: {a}" for u, a in self._pending_exchanges
         )
         prompt = _COMPRESS_PROMPT.format(exchange=exchanges_text)
 
