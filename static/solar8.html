@@ -272,6 +272,8 @@
     }
     #send-btn:hover { background: #24245a; color: #c8d8ff; }
     #send-btn:disabled { opacity: 0.4; cursor: default; }
+    #send-btn.stop-btn { background: #2e1a1a; border: 1px solid #5c3a3a; color: #ff6b6b; }
+    #send-btn.stop-btn:hover { background: #3a2020; color: #ff8a8a; }
 
     .stream-cursor::after {
       content: '▋';
@@ -325,6 +327,8 @@
 
     let history = [];
     let pendingFiles = [];
+    let sending = false;
+    let currentAbortController = null;
 
     paperclip.addEventListener('click', () => fileInput.click());
 
@@ -578,12 +582,15 @@
 
     async function sendMessage() {
       const text = input.value.trim();
-      if (!text || sendBtn.disabled) return;
+      if (!text || sending) return;
 
+      sending = true;
+      currentAbortController = new AbortController();
       input.value = '';
       input.style.height = 'auto';
       feed.style.bottom = inputBar.offsetHeight + 'px';
-      sendBtn.disabled = true;
+      sendBtn.textContent = '■ Stop';
+      sendBtn.classList.add('stop-btn');
 
       const filesSnapshot = [...pendingFiles];
       addUserMessage(text, filesSnapshot.length > 0 ? filesSnapshot : null);
@@ -607,6 +614,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
+          signal: currentAbortController.signal,
         });
         const data = await res.json();
         thinkingRow.remove();
@@ -616,17 +624,48 @@
         history.push({ role: 'assistant', content: reply });
       } catch (err) {
         try { thinkingRow.remove(); } catch {}
-        addThinking('Error reaching SolCalarbone8. Try again.');
-        history.pop();
+        if (err.name !== 'AbortError') {
+          addThinking('Error reaching SolCalarbone8. Try again.');
+          history.pop();
+        }
       } finally {
+        sending = false;
+        currentAbortController = null;
+        sendBtn.textContent = 'Send';
+        sendBtn.classList.remove('stop-btn');
         sendBtn.disabled = false;
         input.focus();
       }
     }
 
-    sendBtn.addEventListener('click', sendMessage);
+    sendBtn.addEventListener('click', () => {
+      if (sending && currentAbortController) { currentAbortController.abort(); } else { sendMessage(); }
+    });
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    });
+    input.addEventListener('paste', (e) => {
+      const items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+          if (pendingFiles.length >= 9) continue;
+          const file = items[i].getAsFile();
+          if (!file) continue;
+          const fileName = 'pasted-image-' + Date.now() + '.png';
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const dataUrl = ev.target.result;
+            const fileObj = { name: fileName, mime_type: file.type || 'image/png', data: (dataUrl.split(',')[1] || dataUrl), is_text: false, dataUrl: dataUrl };
+            pendingFiles.push(fileObj);
+            addChip(fileObj);
+            chipBar.classList.add('visible');
+            feed.classList.add('with-chip');
+            feed.style.bottom = (inputBar.offsetHeight + chipBar.offsetHeight) + 'px';
+          };
+          reader.readAsDataURL(file);
+        }
+      }
     });
   </script>
 </body>
