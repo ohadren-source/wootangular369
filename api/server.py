@@ -21,7 +21,7 @@ from core.tcp_up import TCPUp
 from core.init_loader import load_corpus_into_cache
 from core.fusion_core import FusionCore, BOOL_NULL
 from core.solar8 import Solar8
-from core.yentah_swarm import YentahSwarm
+from core.yentah_swarm import YentahSwarm, AXIOM_SET as YENTAH_AXIOM_SET
 import core.google_services as google_services
 
 logging.basicConfig(level=logging.INFO)
@@ -287,7 +287,7 @@ def swarm_status():
             "status": "ok",
             "agents": list(yentah.agents),
             "agent_count": len(yentah.agents),
-            "axioms": yentah.AXIOM_SET if hasattr(yentah, 'AXIOM_SET') else ['VENIM.US', 'WarPeacenife44K', 'GRINDARK', 'B+W_TEMPLARS'],
+            "axioms": yentah.AXIOM_SET if hasattr(yentah, 'AXIOM_SET') else YENTAH_AXIOM_SET,
             "recent_resonance": [dict(r) for r in resonance] if resonance else [],
         })
     except Exception as e:
