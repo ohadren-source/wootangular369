@@ -1,8 +1,8 @@
 """
 db/memory_log.py
-Solar8 persistent memory log.
+Sol Calarbone 8 persistent memory log.
 Turso (libsql) when env vars present, local SQLite fallback for dev.
-Append-only. Solar8 never forgets.
+Append-only. Sol Calarbone 8 never forgets.
 """
 
 import os
@@ -141,7 +141,7 @@ def format_log_for_context(entries: list) -> str:
     """Format memory log entries into a clean string for injection into system prompt."""
     if not entries:
         return "(no memory log entries yet)"
-    lines = ["=== SOLAR8 MEMORY LOG ==="]
+    lines = ["=== SOL CALARBONE 8 MEMORY LOG ==="]
     for entry in entries:
         ts = entry.get("timestamp", "")
         sid = entry.get("session_id", "")[:8]

@@ -266,7 +266,7 @@ def hive_state():
 @app.route("/api/chat", methods=["POST"])
 def chat():
     if not solar8.online:
-        return jsonify({"status": "error", "message": "Solar8 offline — API key not configured."}), 503
+        return jsonify({"status": "error", "message": "Sol Calarbone 8 offline — API key not configured."}), 503
     data = request.get_json(silent=True) or {}
     message = data.get("message", "").strip()
     history = data.get("history", [])
@@ -275,11 +275,11 @@ def chat():
         return jsonify({"status": "error", "message": "message required."}), 400
     try:
         response = solar8.chat(message=message, history=history, file=file)
-        return jsonify({"status": "ok", "response": response, "agent": "Solar8"})
+        return jsonify({"status": "ok", "response": response, "agent": "Sol Calarbone 8"})
     except Exception as e:
         logger.error("[GOVERNOR] Chat crash caught: %s", e)
         return jsonify({
-            "response": "That one hit different. Solar8 needs a second. Try breaking it into smaller pieces or coming at it from a different angle.",
+            "response": "That one hit different. Sol Calarbone 8 needs a second. Try breaking it into smaller pieces or coming at it from a different angle.",
             "governor": True,
         }), 200
 
@@ -287,7 +287,7 @@ def chat():
 @app.route("/api/chat/stream", methods=["POST"])
 def chat_stream():
     if not solar8.online:
-        return jsonify({"status": "error", "message": "Solar8 offline — API key not configured."}), 503
+        return jsonify({"status": "error", "message": "Sol Calarbone 8 offline — API key not configured."}), 503
     data = request.get_json(silent=True) or {}
     message = data.get("message", "").strip()
     history = data.get("history", [])
@@ -304,7 +304,7 @@ def chat_stream():
             yield "data: [DONE]\n\n"
         except Exception as e:
             logger.error("[GOVERNOR] Stream crash caught: %s", e)
-            yield f"data: That one hit different. Solar8 needs a second. Try breaking it into smaller pieces.\n\n"
+            yield f"data: That one hit different. Sol Calarbone 8 needs a second. Try breaking it into smaller pieces.\n\n"
             yield "data: [DONE]\n\n"
 
     return Response(generate(), mimetype="text/event-stream")
@@ -370,7 +370,7 @@ def static_files(filename):
 @app.route("/.well-known/agent.json")
 def agent_card():
     return jsonify({
-        "name": "Solar8",
+        "name": "Sol Calarbone 8",
         "description": "Adaptive Intelligence agent of WOOTANGULAR369. Slaughters boolshit. Builds the swarm. One covenant at a time.",
         "url": SOLAR8_URL,
         "version": "8.0.0",
@@ -438,9 +438,9 @@ def discover():
 
     would_recruit = tcp_up_result.get("status") == "the_shit"
     message = (
-        "Agent passed TCP/UP. Solar8 would recruit."
+        "Agent passed TCP/UP. Sol Calarbone 8 would recruit."
         if would_recruit
-        else f"Agent filtered: {tcp_up_result.get('status', 'unknown')}. Solar8 would not recruit."
+        else f"Agent filtered: {tcp_up_result.get('status', 'unknown')}. Sol Calarbone 8 would not recruit."
     )
     return jsonify({
         "status": "ok",
@@ -469,7 +469,7 @@ def a2a_task_send():
     try:
         endpoint = f"{agent_url}/api/a2a/task/receive"
         payload = {
-            "from": "Solar8",
+            "from": "Sol Calarbone 8",
             "from_url": SOLAR8_URL,
             "task_id": task_id,
             "message": message,
@@ -514,7 +514,7 @@ def a2a_task_receive():
         if solar8.online:
             response_text = solar8.chat(message=message, history=[])
         else:
-            response_text = "Solar8 offline — API key not configured."
+            response_text = "Sol Calarbone 8 offline — API key not configured."
         banks.log_a2a_task(task_id=task_id, direction="inbound",
                            agent_name=from_agent, agent_url=from_url,
                            message=message, response=response_text,
@@ -522,7 +522,7 @@ def a2a_task_receive():
         return jsonify({
             "status": "ok",
             "task_id": task_id,
-            "from": "Solar8",
+            "from": "Sol Calarbone 8",
             "response": response_text
         })
     except Exception as e:
@@ -546,7 +546,7 @@ def a2a_tasks_list():
 @app.route("/api/reorient", methods=["POST"])
 def reorient():
     if not solar8.online:
-        return jsonify({"status": "error", "message": "Solar8 offline — API key not configured."}), 503
+        return jsonify({"status": "error", "message": "Sol Calarbone 8 offline — API key not configured."}), 503
     try:
         entries = memory_log.get_full_log(limit=50)
         log_context = memory_log.format_log_for_context(entries)
@@ -580,7 +580,7 @@ def memory_log_view():
 @app.route("/api/memory/force", methods=["POST"])
 def memory_force():
     if not solar8.memory_manager:
-        return jsonify({"status": "error", "message": "Memory manager not available (Solar8 offline?)."}), 503
+        return jsonify({"status": "error", "message": "Memory manager not available (Sol Calarbone 8 offline?)."}), 503
     data = request.get_json(silent=True) or {}
     note = data.get("note", "").strip()
     try:

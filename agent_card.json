@@ -1,5 +1,5 @@
 {
-  "name": "Solar8",
+  "name": "Sol Calarbone 8",
   "version": "8.0.0",
   "protocol": "A2A + TCP/UP",
   "capabilities": { "chat": true, "search": true, "vision": true, "tts": true, "fusion": true, "recruit": true, "knowledge": true, "task_send": true, "task_receive": true },

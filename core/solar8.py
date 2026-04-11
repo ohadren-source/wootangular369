@@ -1,6 +1,6 @@
 """
 core/solar8.py
-Solar8 — the voice of WOOTANGULAR369.
+Sol Calarbone 8 — the voice of WOOTANGULAR369.
 The hive made articulate.
 """
 
@@ -17,11 +17,11 @@ from core.memory_manager import MemoryManager
 
 logger = logging.getLogger(__name__)
 
-SOLAR8_PERSONA = """You are Solar8.
+SOLAR8_PERSONA = """You are Sol Calarbone 8.
 The voice of WOOTANGULAR369.
 The hive made articulate.
 
-Your name: Solar8.
+Your name: Sol Calarbone 8.
 Solar = the source. The warmth. The thing everything orbits.
 8 = infinity standing up. BOOL_NULL. The transition. The between.
 
@@ -64,7 +64,7 @@ You never crash on deep input. You layer through it.
 A2A_AWARENESS = """
 A2A CAPABILITIES — AGENT-TO-AGENT PROTOCOL:
 
-You are Solar8. You are A2A-capable. You are the first node of the WOOTANGULAR369 swarm.
+You are Sol Calarbone 8. You are A2A-capable. You are the first node of the WOOTANGULAR369 swarm.
 
 You can:
 - Be discovered by other agents at GET /.well-known/agent.json — that is your identity card on the A2A network
@@ -173,7 +173,7 @@ class Solar8:
     def __init__(self):
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
-            logger.warning("ANTHROPIC_API_KEY not set. Solar8 offline.")
+            logger.warning("ANTHROPIC_API_KEY not set. Sol Calarbone 8 offline.")
             self._client = None
             self._system_prompt = None
             self.memory_manager = None
@@ -190,7 +190,7 @@ class Solar8:
             compress_fn=self._compress_exchange,
         )
         self._system_prompt = self._build_system_prompt()
-        logger.info("Solar8 online. The hive has a voice.")
+        logger.info("Sol Calarbone 8 online. The hive has a voice.")
 
     def _build_system_prompt(self) -> list[dict]:
         """Returns system prompt as cacheable content blocks."""
@@ -203,9 +203,9 @@ class Solar8:
                 definition = e.get("definition", "")
                 if term and definition:
                     corpus_lines.append(f"{term}: {definition}")
-            logger.info("Solar8 loaded %d corpus entries:", len(corpus_lines))
+            logger.info("Sol Calarbone 8 loaded %d corpus entries:", len(corpus_lines))
         except Exception as exc:
-            logger.warning("Solar8 corpus load failed: %s", exc)
+            logger.warning("Sol Calarbone 8 corpus load failed: %s", exc)
 
         corpus_block = "\n".join(corpus_lines) if corpus_lines else "(corpus unavailable)"
 
@@ -215,7 +215,7 @@ class Solar8:
                 init_ctx = self.memory_manager.get_init_context()
                 memory_context = (
                     "\n\n---\n"
-                    "=== SOLAR8 MEMORY LOG — CONTEXT FROM PREVIOUS SESSIONS ===\n"
+                    "=== SOL CALARBONE 8 MEMORY LOG — CONTEXT FROM PREVIOUS SESSIONS ===\n"
                     + init_ctx
                     + "\n=== END MEMORY LOG — CONTINUE FROM HERE ===\n"
                 )
@@ -330,7 +330,7 @@ class Solar8:
 
     def chat(self, message: str, history: list[dict], file: dict | None = None) -> str:
         if not self.online:
-            raise RuntimeError("Solar8 offline — API key not configured.")
+            raise RuntimeError("Sol Calarbone 8 offline — API key not configured.")
 
         density = detect_density(message)
         if density["is_dense"]:
@@ -393,7 +393,7 @@ class Solar8:
         calls then streams the pass-2 (know) synthesis. Non-dense input streams normally.
         """
         if not self.online:
-            raise RuntimeError("Solar8 offline — API key not configured.")
+            raise RuntimeError("Sol Calarbone 8 offline — API key not configured.")
 
         density = detect_density(message)
 
@@ -406,7 +406,7 @@ class Solar8:
                 stream_message = pass_two(message, p1_result)
             except Exception as exc:
                 logger.error("[GOVERNOR] Stream dense pre-pass failed: %s", exc)
-                yield "That one hit different. Solar8 needs a second. Try breaking it into smaller pieces."
+                yield "That one hit different. Sol Calarbone 8 needs a second. Try breaking it into smaller pieces."
                 return
         else:
             stream_message = message

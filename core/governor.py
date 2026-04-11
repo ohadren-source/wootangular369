@@ -28,7 +28,7 @@ _NULL_PHI_MARKERS = {
     "null_φ", "null_phi", "bool++", "bool_null", "bool_true", "bool_false",
     "gi;wg", "tcp/up", "jragonate", "boolshit", "tupelo", "terrafy",
     "axiomate", "dayenu++", "precisecement", "brootlyn", "schoen",
-    "annihilate", "wootangular", "solar8", "lilypod", "venim.us",
+    "annihilate", "wootangular", "sol calarbone 8", "lilypod", "venim.us",
     "videm.us", "vincim.us", "ri =", "pd1", "pd2", "pd3",
 }
 
