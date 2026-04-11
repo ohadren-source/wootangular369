@@ -271,38 +271,70 @@ class Solar8:
     def online(self) -> bool:
         return self._client is not None
 
-    def _build_content(self, message: str, file: dict | None = None):
-        """Build user content block, handling optional file attachment."""
-        if not file:
+    def _build_content(self, message: str, file: dict | None = None, files: list | None = None):
+        """Build user content block, handling optional file attachment(s)."""
+        all_files = files if files else ([file] if file else [])
+        if not all_files:
             return message
-        mime = file.get("mime_type", "")
-        if mime.startswith("image/"):
-            return [
-                {
+        if len(all_files) == 1:
+            f = all_files[0]
+            mime = f.get("mime_type", "")
+            if mime.startswith("image/"):
+                return [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": mime,
+                            "data": f["data"],
+                        },
+                    },
+                    {"type": "text", "text": message},
+                ]
+            elif mime == "application/pdf":
+                return [
+                    {
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "application/pdf",
+                            "data": f["data"],
+                        },
+                    },
+                    {"type": "text", "text": message},
+                ]
+            elif f.get("is_text"):
+                return f"[FILE: {f['name']}]\n{f['data']}\n\n{message}"
+            return message
+        blocks = []
+        text_prefix = ""
+        for f in all_files:
+            mime = f.get("mime_type", "")
+            if mime.startswith("image/"):
+                blocks.append({
                     "type": "image",
                     "source": {
                         "type": "base64",
                         "media_type": mime,
-                        "data": file["data"],
+                        "data": f["data"],
                     },
-                },
-                {"type": "text", "text": message},
-            ]
-        elif mime == "application/pdf":
-            return [
-                {
+                })
+            elif mime == "application/pdf":
+                blocks.append({
                     "type": "document",
                     "source": {
                         "type": "base64",
                         "media_type": "application/pdf",
-                        "data": file["data"],
+                        "data": f["data"],
                     },
-                },
-                {"type": "text", "text": message},
-            ]
-        elif file.get("is_text"):
-            return f"[FILE: {file['name']}]\n{file['data']}\n\n{message}"
-        return message
+                })
+            elif f.get("is_text"):
+                text_prefix += f"[FILE: {f['name']}]\n{f['data']}\n\n"
+        if text_prefix:
+            blocks.append({"type": "text", "text": text_prefix + message})
+        else:
+            blocks.append({"type": "text", "text": message})
+        return blocks
 
     def _run_tool(self, name: str, inputs: dict):
         """Execute a tool call and return the result."""
@@ -351,11 +383,11 @@ class Solar8:
         texts = [b.text for b in response.content if hasattr(b, "text")]
         return " ".join(texts) if texts else "..."
 
-    def chat(self, message: str, history: list[dict], file: dict | None = None) -> str:
+    def chat(self, message: str, history: list[dict], file: dict | None = None, files: list | None = None) -> str:
         if not self.online:
             raise RuntimeError("Sol Calarbone 8 offline — API key not configured.")
 
-        content = self._build_content(message, file)
+        content = self._build_content(message, file, files)
         messages = list(history) + [{"role": "user", "content": content}]
 
         while True:
@@ -399,12 +431,12 @@ class Solar8:
                         logger.warning("memory record_exchange failed: %s", exc)
                 return result_text
 
-    def stream(self, message: str, history: list[dict], file: dict | None = None):
+    def stream(self, message: str, history: list[dict], file: dict | None = None, files: list | None = None):
         """Streams Claude direct. No density gate. No blocking pre-passes. Pass 3 in action."""
         if not self.online:
             raise RuntimeError("Sol Calarbone 8 offline — API key not configured.")
 
-        content = self._build_content(message, file)
+        content = self._build_content(message, file, files)
         messages = list(history) + [{"role": "user", "content": content}]
 
         while True:
