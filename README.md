@@ -124,4 +124,12 @@ All tables: `wootangular_*`
 - `wootangular_agents`
 - `wootangular_covenants`
 - `wootangular_knowledge`
-- `
+- `wootangular_signals`
+- `wootangular_init_cache`
+- `wootangular_fusions`
+- `wootangular_a2a_tasks`
+- `wootangular_resonance`
+
+---
+
+VENIM.US · VIDEM.US · VINCIM.US
