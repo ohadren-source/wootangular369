@@ -128,9 +128,7 @@ class MemoryManager:
 
         logger.info("Force snapshot triggered: %s", reason)
         last_user, last_asst = self._pending_exchanges[-1]
-        # Append the reason as a flag via trigger_summary
-        self._pending_exchanges.append(("(force snapshot reason)", reason))
-        self.trigger_summary(last_user, reason)
+        self.trigger_summary(last_user, last_asst)
         logger.info("Force snapshot completed: %s", reason)
 
     def get_init_context(self) -> str:

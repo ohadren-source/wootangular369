@@ -8,6 +8,7 @@ import os
 import uuid
 import json as _json
 import logging
+import requests
 import anthropic
 
 import db.wootangular_banks as banks
@@ -406,7 +407,6 @@ class Solar8:
     def _run_tool(self, name: str, inputs: dict):
         """Execute a tool call and return the result."""
         from core.google_services import brave_search, google_search, analyze_image
-        import requests
         try:
             if name == "brave_search":
                 results = brave_search(inputs["query"])
@@ -491,8 +491,7 @@ class Solar8:
         if exchanges_count > 0 and exchanges_count % 10 == 0:
             logger.info("Auto-querying memory log (every 10 exchanges)")
             try:
-                recent_log = self._run_tool("query_memory_log", {"limit": 3})
-                logger.debug("Recent memory context: %s", recent_log)
+                self._run_tool("query_memory_log", {"limit": 3})
             except Exception as exc:
                 logger.warning("Auto memory query failed: %s", exc)
 
@@ -514,7 +513,7 @@ class Solar8:
                     resonance_score = detect_resonance(
                         message=message,
                         response=result_text,
-                        context={"exchanges_since_last_log": exchanges_count % 12}
+                        context={"exchanges_since_last_log": exchanges_count % 10}
                     )
                     if should_force_snapshot(resonance_score):
                         logger.info("Resonance threshold met (%.3f), forcing snapshot", resonance_score)
