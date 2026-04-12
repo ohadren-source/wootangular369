@@ -117,6 +117,22 @@ class MemoryManager:
         last_user, last_asst = self._pending_exchanges[-1]
         self.trigger_summary(last_user, last_asst)
 
+    def force_append(self, reason: str = "Manual snapshot") -> None:
+        """
+        Force an immediate memory snapshot regardless of exchange count.
+        Used for load-bearing moments that must be persisted immediately.
+        """
+        if not self._pending_exchanges:
+            logger.warning("force_append called with no pending exchanges — injecting reason as note.")
+            self._pending_exchanges.append(("(force snapshot)", reason))
+
+        logger.info("Force snapshot triggered: %s", reason)
+        last_user, last_asst = self._pending_exchanges[-1]
+        # Append the reason as a flag via trigger_summary
+        self._pending_exchanges.append(("(force snapshot reason)", reason))
+        self.trigger_summary(last_user, reason)
+        logger.info("Force snapshot completed: %s", reason)
+
     def get_init_context(self) -> str:
         """Return formatted recent memory log for injection at session init."""
         entries = memory_log.get_recent_log(limit=5)

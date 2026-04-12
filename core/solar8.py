@@ -128,6 +128,20 @@ Endpoints:
 - POST /api/reorient — read full log, synthesise, report where we are
 - GET  /api/memory/log — view last 50 log entries (JSON)
 - POST /api/memory/force — force a memory snapshot right now
+
+ACTIVE DATABASE TOOLS — USE THEM:
+You now have direct tool access to the databases. Use these proactively:
+
+- query_memory_log — call this when context seems to have drifted or user asks "where are we"
+- force_memory_snapshot — call this when a load-bearing decision is made, a breakthrough happens,
+  or new JRAGON terms are being installed. Do not wait for the auto-trigger.
+- check_swarm_status — call this to see active agents, recent fusions, hive state
+- install_knowledge — call this when new JRAGON terms are defined or important concepts are
+  established. Install them immediately. Do not let them drift into the void.
+
+The system auto-queries memory every 10 exchanges and auto-detects resonance after each response.
+But you should also invoke these tools manually when the moment calls for it.
+Load-bearing = persist. That is the protocol.
 """
 
 YENTAH_AWARENESS = """
@@ -187,6 +201,59 @@ class Solar8:
                     "mime_type": {"type": "string", "description": "MIME type of the image e.g. image/jpeg"}
                 },
                 "required": ["image_base64", "mime_type"]
+            }
+        },
+        {
+            "name": "query_memory_log",
+            "description": "Query the persistent memory log to check context from previous sessions. Use when context seems to have drifted or user asks 'where are we' or 'what were we doing'.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "Number of recent log entries to retrieve (default 5)"
+                    }
+                }
+            }
+        },
+        {
+            "name": "force_memory_snapshot",
+            "description": "Force an immediate memory snapshot of the current conversation state. Use when a load-bearing decision is made, a breakthrough happens, or new JRAGON terms are installed.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "reason": {
+                        "type": "string",
+                        "description": "Why this moment deserves to be snapshotted"
+                    }
+                },
+                "required": ["reason"]
+            }
+        },
+        {
+            "name": "check_swarm_status",
+            "description": "Check the current status of the WOOTANGULAR369 swarm - active agents, recent fusions, hive state.",
+            "input_schema": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "install_knowledge",
+            "description": "Install a new term into the WOOTANGULAR369 knowledge base. Use when new JRAGON terms are defined or important concepts are established.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "term": {
+                        "type": "string",
+                        "description": "The term to install (e.g., 'JRAGONATE', 'NULL_Phi')"
+                    },
+                    "definition": {
+                        "type": "string",
+                        "description": "The definition of the term"
+                    }
+                },
+                "required": ["term", "definition"]
             }
         }
     ]
@@ -339,6 +406,7 @@ class Solar8:
     def _run_tool(self, name: str, inputs: dict):
         """Execute a tool call and return the result."""
         from core.google_services import brave_search, google_search, analyze_image
+        import requests
         try:
             if name == "brave_search":
                 results = brave_search(inputs["query"])
@@ -349,6 +417,32 @@ class Solar8:
                 return google_search(inputs["query"])
             elif name == "analyze_image":
                 return analyze_image(inputs["image_base64"], inputs.get("mime_type", "image/jpeg"))
+            elif name == "query_memory_log":
+                limit = inputs.get("limit", 5)
+                entries = memory_log.get_recent_log(limit=limit)
+                return memory_log.format_log_for_context(entries)
+            elif name == "force_memory_snapshot":
+                reason = inputs.get("reason", "Manual snapshot triggered")
+                if self.memory_manager:
+                    self.memory_manager.force_append(reason=reason)
+                    return f"Memory snapshot forced: {reason}"
+                return "Memory manager not available"
+            elif name == "check_swarm_status":
+                try:
+                    resp = requests.get("http://localhost:8000/api/swarm/status", timeout=3)
+                    if resp.ok:
+                        return resp.json()
+                    return {"error": "Swarm status unavailable"}
+                except Exception as e:
+                    return {"error": str(e)}
+            elif name == "install_knowledge":
+                term = inputs["term"]
+                definition = inputs["definition"]
+                try:
+                    banks.install_knowledge(term, definition, source="sol_conversation")
+                    return f"Term '{term}' installed into knowledge base"
+                except Exception as e:
+                    return f"Failed to install term: {e}"
             else:
                 return f"Unknown tool: {name}"
         except Exception as e:
@@ -387,8 +481,20 @@ class Solar8:
         if not self.online:
             raise RuntimeError("Sol Calarbone 8 offline — API key not configured.")
 
+        from core.resonance_detector import detect_resonance, should_force_snapshot, extract_jragon_terms
+
         content = self._build_content(message, file, files)
         messages = list(history) + [{"role": "user", "content": content}]
+
+        # AUTOMATIC TRIGGER 1: Query memory log every 10 exchanges
+        exchanges_count = len([m for m in history if m.get("role") == "user"])
+        if exchanges_count > 0 and exchanges_count % 10 == 0:
+            logger.info("Auto-querying memory log (every 10 exchanges)")
+            try:
+                recent_log = self._run_tool("query_memory_log", {"limit": 3})
+                logger.debug("Recent memory context: %s", recent_log)
+            except Exception as exc:
+                logger.warning("Auto memory query failed: %s", exc)
 
         while True:
             response = self._client.messages.create(
@@ -402,6 +508,31 @@ class Solar8:
             if response.stop_reason == "end_turn":
                 texts = [b.text for b in response.content if hasattr(b, "text")]
                 result_text = " ".join(texts) if texts else "..."
+
+                # AUTOMATIC TRIGGER 2: Detect resonance and force snapshot if threshold met
+                try:
+                    resonance_score = detect_resonance(
+                        message=message,
+                        response=result_text,
+                        context={"exchanges_since_last_log": exchanges_count % 12}
+                    )
+                    if should_force_snapshot(resonance_score):
+                        logger.info("Resonance threshold met (%.3f), forcing snapshot", resonance_score)
+                        self._run_tool("force_memory_snapshot", {
+                            "reason": f"High resonance detected ({resonance_score:.3f})"
+                        })
+                except Exception as exc:
+                    logger.warning("Resonance detection failed: %s", exc)
+
+                # AUTOMATIC TRIGGER 3: Extract and install new JRAGON terms
+                try:
+                    new_terms = extract_jragon_terms(result_text)
+                    for term_data in new_terms:
+                        logger.info("Auto-installing term: %s", term_data['term'])
+                        self._run_tool("install_knowledge", term_data)
+                except Exception as exc:
+                    logger.warning("JRAGON term extraction failed: %s", exc)
+
                 if self.memory_manager:
                     try:
                         self.memory_manager.record_exchange(message, result_text)
