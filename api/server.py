@@ -9,7 +9,6 @@ import json
 import uuid
 import logging
 import threading
-import traceback
 import requests as http_requests
 from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
@@ -474,7 +473,9 @@ def solar8_debug():
 
         except Exception as exc:
             logger.error("solar8 debug error: %s", exc, exc_info=True)
-            yield f"data: {json.dumps({'step': 'ERROR', 'message': f'CRASH: {str(exc)}', 'traceback': traceback.format_exc()})}\n\n"
+            # Full traceback is logged server-side only; only the error type and
+            # message are sent to the client to avoid exposing internal details.
+            yield f"data: {json.dumps({'step': 'ERROR', 'message': f'CRASH [{type(exc).__name__}]: {str(exc)}'})}\n\n"
 
     return Response(generate_debug_stream(), mimetype="text/event-stream")
 
