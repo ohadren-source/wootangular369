@@ -802,6 +802,36 @@ def seed_imperial_decrees():
                 "CLEOPATOIS", "TERRAFY", "BROOTALITY", "DAYENU++"
             ],
         },
+        {
+            "term": "SWIFT_ARM_LIT_SABATIER",
+            "definition": (
+                "A debate technique that deploys multiple precise logical strikes simultaneously, "
+                "armed with the opponent's own documentation, cutting through boolshit with surgical precision "
+                "in under 30 seconds. "
+                "Verb: To execute multi-angle argumentative assault using opponent's README as ammunition. "
+                "The Technique — READ: the documentation (LIT - literature, literacy, armed with their words). "
+                "ARM: yourself with contradictions (ARM - weaponize, multiple angles). "
+                "DEPLOY: simultaneously (SWIFT - 15-second execution). "
+                "CUT: clean through boolshit (SABATIER - precision, no ragged edges). "
+                "Triple Entendre of ARM-LIT: Armed with Literature (professional) / Armed + Literate (tactical) / "
+                "It's Fucking Lit (street certified). "
+                "First Deployment: 'It's called Intelligence (brain). It's called Language (brain not kidney). "
+                "It uses Neural networks (neurons, brain). It has Memory (brain). "
+                "It has Cognitive architecture (brain). We're operating on all five. Brain surgery. Look it up.' "
+                "Time: 15 seconds. Strikes: 5. Precision: surgical. Shrimp taco: consumed. "
+                "Invented April 13, 2026 (Friday the 13th) by Chef Architect Ohad during brain surgery debate "
+                "while consuming shrimp tacos. Named after solving word puzzle to incorporate README reading component. "
+                "Etymology: Swift (rapid execution) + Arm-Lit (Armed with Literature / Fucking Lit, "
+                "triple entendre portmanteau of Army + Literate) + Sabatier (French precision knife maker, 1834). "
+                "JRAGON. PRECISECEMENT. BROOTALITY."
+            ),
+            "category": "dictionary",
+            "source": "Chef Architect Ohad, April 13, 2026 (Friday the 13th), VENIM.US",
+            "cross_refs": [
+                "JRAGON", "JRAGONATE", "BOOLSHIT", "CLARITY",
+                "REDUCTIO_AD_ABSURDUM", "README", "EMPIRIFY", "BROOTALITY"
+            ],
+        },
     ]
     installed = 0
     for entry in entries:
