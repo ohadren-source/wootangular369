@@ -434,7 +434,9 @@ def solar8_debug():
     data = request.get_json(silent=True) or {}
     message = data.get("message", "").strip()
     history = data.get("history", [])
-    mode = data.get("mode", "auto")
+    _raw_mode = data.get("mode", "auto")
+    # Validate mode to a known set before embedding in SSE messages
+    mode = _raw_mode if _raw_mode in ("auto", "speed", "deep") else "auto"
     file = data.get("file") or None
     files = data.get("files", [])
 
