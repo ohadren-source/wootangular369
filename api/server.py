@@ -105,6 +105,7 @@ def index():
             "hive_state":           "GET  /api/fuse/hive_state",
             "chat":                 "POST /api/chat",
             "chat_stream":          "POST /api/chat/stream",
+            "solar8_chat":          "POST /api/solar8/chat",
             "search":               "POST /api/search",
             "vision":               "POST /api/vision",
             "tts":                  "POST /api/tts",
@@ -346,6 +347,7 @@ def chat():
     data = request.get_json(silent=True) or {}
     message = data.get("message", "").strip()
     history = data.get("history", [])
+    mode = data.get("mode", "auto")
     file = data.get("file") or None
     files = data.get("files", [])
     if files:
@@ -355,19 +357,57 @@ def chat():
     if not message:
         return jsonify({"status": "error", "message": "message required."}), 400
     try:
-        response = solar8.chat(message=message, history=history, file=file, files=files if files else None)
+        response = solar8.chat(message=message, history=history, mode=mode, file=file, files=files if files else None)
         threading.Thread(
             target=pattern_tracker.observe,
             args=({"message": message, "response": response},),
             daemon=True,
         ).start()
-        return jsonify({"status": "ok", "response": response, "agent": "Sol Calarbone 8"})
+        return jsonify({"status": "ok", "response": response, "agent": "Sol Calarbone 8", "mode": mode})
     except Exception as e:
         logger.error("[SOLAR8] Chat crash caught: %s", e)
         return jsonify({
             "response": "That one hit different. Sol Calarbone 8 needs a second. Try breaking it into smaller pieces or coming at it from a different angle.",
             "governor": True,
         }), 200
+
+
+@app.route("/api/solar8/chat", methods=["POST"])
+def solar8_chat():
+    """
+    Chat with Sol Calarbone 8 with explicit mode support (Speed/Deep/Auto).
+
+    Body:
+        {
+            "message": str,
+            "history": list,
+            "mode": "auto" | "speed" | "deep",  (default: "auto")
+            "file": dict (optional),
+            "files": list (optional)
+        }
+    """
+    if not solar8.online:
+        return jsonify({"status": "error", "message": "Sol Calarbone 8 offline — API key not configured."}), 503
+    data = request.get_json(silent=True) or {}
+    message = data.get("message", "").strip()
+    history = data.get("history", [])
+    mode = data.get("mode", "auto")
+    file = data.get("file") or None
+    files = data.get("files", [])
+    if not message:
+        return jsonify({"error": "No message"}), 400
+    try:
+        response = solar8.chat(
+            message=message,
+            history=history,
+            mode=mode,
+            file=file,
+            files=files if files else None,
+        )
+        return jsonify({"response": response, "mode": mode})
+    except Exception as exc:
+        logger.error("[SOLAR8] solar8_chat error: %s", exc, exc_info=True)
+        return jsonify({"error": str(exc)}), 500
 
 
 @app.route("/api/chat/stream", methods=["POST"])
@@ -377,6 +417,7 @@ def chat_stream():
     data = request.get_json(silent=True) or {}
     message = data.get("message", "").strip()
     history = data.get("history", [])
+    mode = data.get("mode", "auto")
     file = data.get("file") or None
     files = data.get("files", [])
     if files:
@@ -390,7 +431,7 @@ def chat_stream():
 
     def generate():
         try:
-            for chunk in solar8.stream(message=message, history=history, file=file, files=files if files else None):
+            for chunk in solar8.stream(message=message, history=history, mode=mode, file=file, files=files if files else None):
                 yield f"data: {chunk}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
