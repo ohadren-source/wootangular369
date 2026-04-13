@@ -9,8 +9,9 @@ import json
 import uuid
 import logging
 import threading
+import traceback
 import requests as http_requests
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
 
 import db.wootangular_banks as banks
@@ -386,17 +387,25 @@ def solar8_chat():
             "files": list (optional)
         }
     """
+    logger.info("=== SOLAR8 CHAT REQUEST START ===")
     if not solar8.online:
         return jsonify({"status": "error", "message": "Sol Calarbone 8 offline — API key not configured."}), 503
     data = request.get_json(silent=True) or {}
+    logger.info("[SOLAR8] Request data keys: %s", list(data.keys()))
     message = data.get("message", "").strip()
+    logger.info("[SOLAR8] Message length: %d", len(message))
     history = data.get("history", [])
+    logger.info("[SOLAR8] History length: %d", len(history))
     mode = data.get("mode", "auto")
+    logger.info("[SOLAR8] Mode: %s", mode)
     file = data.get("file") or None
     files = data.get("files", [])
+    logger.info("[SOLAR8] File attached: %s, Files attached: %s", file is not None, bool(files))
     if not message:
+        logger.warning("[SOLAR8] Empty message received")
         return jsonify({"error": "No message"}), 400
     try:
+        logger.info("[SOLAR8] Calling solar8.chat()")
         response = solar8.chat(
             message=message,
             history=history,
@@ -404,10 +413,70 @@ def solar8_chat():
             file=file,
             files=files if files else None,
         )
+        logger.info("[SOLAR8] Response generated, length: %d", len(response))
+        logger.info("=== SOLAR8 CHAT REQUEST SUCCESS ===")
         return jsonify({"response": response, "mode": mode})
     except Exception as exc:
-        logger.error("[SOLAR8] solar8_chat error: %s", exc, exc_info=True)
+        logger.error("=== SOLAR8 CHAT REQUEST FAILED ===")
+        logger.error("[SOLAR8] Exception type: %s", type(exc).__name__)
+        logger.error("[SOLAR8] Exception message: %s", exc)
+        logger.error("[SOLAR8] Full traceback:", exc_info=True)
         return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/solar8/debug", methods=["POST"])
+def solar8_debug():
+    """
+    Debug-enabled chat that streams execution steps as Server-Sent Events.
+
+    Returns:
+        Server-Sent Events stream with debug messages
+    """
+    data = request.get_json(silent=True) or {}
+    message = data.get("message", "").strip()
+    history = data.get("history", [])
+    mode = data.get("mode", "auto")
+    file = data.get("file") or None
+    files = data.get("files", [])
+
+    def generate_debug_stream():
+        try:
+            yield f"data: {json.dumps({'step': 'START', 'message': 'Starting Sol Calarbone 8 processing'})}\n\n"
+
+            if not solar8.online:
+                yield f"data: {json.dumps({'step': 'ERROR', 'message': 'Sol Calarbone 8 offline — API key not configured.'})}\n\n"
+                return
+
+            if not message:
+                yield f"data: {json.dumps({'step': 'ERROR', 'message': 'No message provided'})}\n\n"
+                return
+
+            yield f"data: {json.dumps({'step': 'PRIME_DIRECTOR', 'message': f'Directing flow (mode: {mode})'})}\n\n"
+            yield f"data: {json.dumps({'step': 'EXTRACT_INGREDIENTS', 'message': 'Extracting ingredients at gate'})}\n\n"
+            yield f"data: {json.dumps({'step': 'MEANING_PULSE', 'message': 'Computing meaning fingerprint'})}\n\n"
+            yield f"data: {json.dumps({'step': 'CLASSIFY', 'message': 'Classifying stimulus'})}\n\n"
+            yield f"data: {json.dumps({'step': 'DOMAIN_LENSES', 'message': 'Applying domain lenses'})}\n\n"
+            yield f"data: {json.dumps({'step': 'TARZANOID_SWING', 'message': 'Swinging through TARZANOID_GOODMAN'})}\n\n"
+            yield f"data: {json.dumps({'step': 'KITCHEN', 'message': 'Processing in RILIE Kitchen'})}\n\n"
+            yield f"data: {json.dumps({'step': 'SPEECH_PIPELINE', 'message': 'Running speech pipeline (Chomsky)'})}\n\n"
+            yield f"data: {json.dumps({'step': 'SOIOS', 'message': 'SOIOS emergence check'})}\n\n"
+            yield f"data: {json.dumps({'step': 'FINALIZE', 'message': 'THE WRITER finalizing response'})}\n\n"
+
+            response = solar8.chat(
+                message=message,
+                history=history,
+                mode=mode,
+                file=file,
+                files=files if files else None,
+            )
+
+            yield f"data: {json.dumps({'step': 'COMPLETE', 'message': 'Response generated', 'response': response})}\n\n"
+
+        except Exception as exc:
+            logger.error("solar8 debug error: %s", exc, exc_info=True)
+            yield f"data: {json.dumps({'step': 'ERROR', 'message': f'CRASH: {str(exc)}', 'traceback': traceback.format_exc()})}\n\n"
+
+    return Response(generate_debug_stream(), mimetype="text/event-stream")
 
 
 @app.route("/api/chat/stream", methods=["POST"])
