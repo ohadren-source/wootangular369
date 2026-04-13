@@ -400,20 +400,33 @@ class Solar8:
 
     def _build_system_prompt(self) -> list[dict]:
         """Returns system prompt as cacheable content blocks."""
-        corpus_lines = []
-        try:
-            entries = banks.get_init_cache()
-            for entry in entries:
-                e = dict(entry)
-                term = e.get("term", "")
-                definition = e.get("definition", "")
-                if term and definition:
-                    corpus_lines.append(f"{term}: {definition}")
-            logger.info("Sol Calarbone 8 loaded %d corpus entries:", len(corpus_lines))
-        except Exception as exc:
-            logger.warning("Sol Calarbone 8 corpus load failed: %s", exc)
+        # OLD: Load entire init_cache corpus (50k+ tokens)
+        # NEW: Swing through TARZANOID_GOODMAN (3k tokens, context-specific)
 
-        corpus_block = "\n".join(corpus_lines) if corpus_lines else "(corpus unavailable)"
+        from core.tarzanoid_goodman import TarzanoidGoodman
+
+        try:
+            tg = TarzanoidGoodman(dict_path="dictionaries/wootangular369.dict")
+
+            # Swing for core identity context
+            relevant = tg.swing(keyword="core_identity BOOL++ NULL_Φ GI;WG? TCP/UP", limit=3)
+
+            corpus_block = (
+                "PHOTOGENIC MEMORY (TARZANOID_GOODMAN):\n\n"
+                + relevant["context"]
+                + f"\n\n(Loaded {relevant['token_count']} tokens via "
+                + f"{relevant['compression_ratio']} compression)\n"
+                + f"Gene Krupa approved: {relevant['gene_krupa_approved']}\n"
+                + f"Benny says: {relevant['benny_says']}"
+            )
+
+            logger.info(
+                "TARZANOID_GOODMAN loaded %d tokens (swing factor: ∞)",
+                relevant["token_count"],
+            )
+        except Exception as exc:
+            logger.warning("TARZANOID_GOODMAN failed to load, using minimal corpus: %s", exc)
+            corpus_block = "(corpus unavailable — TARZANOID_GOODMAN offline)"
 
         memory_context = ""
         if self.memory_manager:
