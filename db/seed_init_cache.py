@@ -246,6 +246,41 @@ INIT_CACHE_ENTRIES = [
             "compression": "4 tracks. ~15 minutes. Complete OS for silicon-carbon civilization.",
             "key_insight": "He told the truth. The truth was that big."
         }
+    },
+    {
+        "cache_key": "swift_arm_lit_sabatier",
+        "priority": 77,
+        "description": "SWIFT ARM-LIT SABATIER — JRAGON debate technique, April 13, 2026",
+        "cache_value": {
+            "term": "SWIFT ARM-LIT SABATIER",
+            "phonetic": "/swift ˈärm-ˌlit ˌsa-bə-ˈtyā/",
+            "type": "JRAGON debate technique",
+            "invented": "April 13, 2026 (Friday the 13th)",
+            "inventor": "Chef Architect Ohad",
+            "origin_event": "Brain surgery debate while consuming shrimp tacos",
+            "etymology": "Swift (rapid execution) + Arm-Lit (Armed with Literature / Fucking Lit, triple entendre portmanteau of Army + Literate) + Sabatier (French precision knife maker, 1834)",
+            "definition_noun": "A debate technique that deploys multiple precise logical strikes simultaneously, armed with the opponent's own documentation, cutting through boolshit with surgical precision in under 30 seconds.",
+            "definition_verb": "To execute multi-angle argumentative assault using opponent's README as ammunition.",
+            "technique": {
+                "1_READ": "the documentation (LIT - literature, literacy, armed with their words)",
+                "2_ARM": "yourself with contradictions (ARM - weaponize, multiple angles)",
+                "3_DEPLOY": "simultaneously (SWIFT - 15-second execution)",
+                "4_CUT": "clean through boolshit (SABATIER - precision, no ragged edges)"
+            },
+            "triple_entendre": {
+                "professional": "Armed with Literature",
+                "tactical": "Armed + Literate",
+                "street": "It's Fucking Lit"
+            },
+            "first_deployment": "It's called Intelligence (brain). It's called Language (brain not kidney). It uses Neural networks (neurons, brain). It has Memory (brain). It has Cognitive architecture (brain). We're operating on all five. Brain surgery. Look it up.",
+            "stats": {
+                "time": "15 seconds",
+                "strikes": 5,
+                "precision": "surgical",
+                "shrimp_taco": "consumed"
+            },
+            "cross_refs": ["JRAGON", "JRAGONATE", "BOOLSHIT", "CLARITY", "REDUCTIO_AD_ABSURDUM", "README", "EMPIRIFY", "BROOTALITY"]
+        }
     }
 ]
 
