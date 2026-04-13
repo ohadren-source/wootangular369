@@ -472,10 +472,10 @@ def solar8_debug():
             yield f"data: {json.dumps({'step': 'COMPLETE', 'message': 'Response generated', 'response': response})}\n\n"
 
         except Exception as exc:
-            logger.error("solar8 debug error: %s", exc, exc_info=True)
-            # Full traceback is logged server-side only; only the error type and
-            # message are sent to the client to avoid exposing internal details.
-            yield f"data: {json.dumps({'step': 'ERROR', 'message': f'CRASH [{type(exc).__name__}]: {str(exc)}'})}\n\n"
+            logger.error("[SOLAR8] debug error: %s", exc, exc_info=True)
+            # Full exception details logged server-side only; only the exception
+            # type is sent to the client to avoid exposing internal information.
+            yield f"data: {json.dumps({'step': 'ERROR', 'message': f'CRASH [{type(exc).__name__}] — check server logs for details'})}\n\n"
 
     return Response(generate_debug_stream(), mimetype="text/event-stream")
 
