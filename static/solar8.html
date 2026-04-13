@@ -27,9 +27,16 @@
       border-bottom: 1px solid #1e1e1e;
       display: flex;
       align-items: center;
+      justify-content: space-between;
       padding: 0 20px;
       gap: 14px;
       z-index: 10;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-left: auto;
     }
     .header-avatar {
       width: 40px;
@@ -506,45 +513,90 @@
       }
     }
 
-    /* === DEBUG PANEL === */
-    #debug-panel {
-      position: fixed;
-      bottom: 0;
-      right: 16px;
-      width: 340px;
+    /* === DEBUG PANEL (header dropdown) === */
+    .debug-header-btn {
       background: #1a1a1a;
       border: 1px solid #333;
-      border-bottom: none;
-      border-radius: 6px 6px 0 0;
+      color: #0f0;
+      padding: 6px 14px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .debug-header-btn:hover {
+      background: #2a2a2a;
+      border-color: #0f0;
+    }
+    .debug-indicator {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #666;
+      flex-shrink: 0;
+    }
+    .debug-indicator.active {
+      background: #0f0;
+      box-shadow: 0 0 6px #0f0;
+    }
+    .debug-indicator.error {
+      background: #f44;
+      box-shadow: 0 0 6px #f44;
+    }
+    .debug-dropdown-panel {
+      position: fixed;
+      top: 68px;
+      right: 20px;
+      width: 420px;
+      max-height: 560px;
+      background: #0a0a0a;
+      border: 1px solid #333;
+      border-radius: 6px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.8);
+      z-index: 999;
+      overflow: hidden;
       font-family: monospace;
       font-size: 11px;
-      z-index: 1000;
-      box-shadow: -2px -2px 8px rgba(0,0,0,0.4);
     }
-    #debug-header {
-      padding: 6px 10px;
-      background: #0a0a0a;
+    .debug-dropdown-header {
+      background: #1a1a1a;
+      padding: 10px 14px;
       border-bottom: 1px solid #333;
-      cursor: pointer;
       display: flex;
       justify-content: space-between;
       align-items: center;
       color: #0f0;
-      border-radius: 6px 6px 0 0;
-      user-select: none;
+      font-weight: 600;
     }
-    #debug-header:hover { background: #151515; }
-    #debug-body {
-      max-height: 220px;
+    .debug-close-btn {
+      background: none;
+      border: none;
+      color: #666;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+    }
+    .debug-close-btn:hover { color: #f44; }
+    .debug-log-container {
+      max-height: 490px;
       overflow-y: auto;
       padding: 6px 8px;
     }
-    #debug-body.collapsed { display: none; }
+    .debug-log-container::-webkit-scrollbar { width: 6px; }
+    .debug-log-container::-webkit-scrollbar-track { background: #0a0a0a; }
+    .debug-log-container::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+    .debug-log-container::-webkit-scrollbar-thumb:hover { background: #0f0; }
     .dbg-line {
-      padding: 2px 6px;
-      margin: 1px 0;
+      padding: 3px 8px;
+      margin: 2px 0;
       border-left: 3px solid #0f0;
-      line-height: 1.4;
+      line-height: 1.5;
     }
     .dbg-line.dbg-error { border-left-color: #f44; color: #f88; }
     .dbg-line.dbg-complete { border-left-color: #0ff; color: #0ff; }
@@ -577,17 +629,23 @@
       <span class="header-title">SolCalarbone8</span>
       <span class="header-sub">WOOTANGULAR369</span>
     </div>
+    <div class="header-right">
+      <button class="debug-header-btn" id="debugHeaderBtn" onclick="toggleDebugFromHeader()">
+        🔍 Debug
+        <span class="debug-indicator" id="debugIndicator"></span>
+      </button>
+    </div>
   </header>
 
   <div id="feed"></div>
 
-  <!-- Debug thought-process panel (temporary diagnostic) -->
-  <div id="debug-panel">
-    <div id="debug-header" onclick="toggleDebug()">
+  <!-- Debug dropdown panel from header -->
+  <div class="debug-dropdown-panel" id="debugDropdownPanel" style="display:none">
+    <div class="debug-dropdown-header">
       <span>🔍 Debug Thought Process</span>
-      <span id="debug-toggle">▶</span>
+      <button class="debug-close-btn" onclick="toggleDebugFromHeader()">✕</button>
     </div>
-    <div id="debug-body" class="collapsed">
+    <div class="debug-log-container">
       <div id="debug-log"></div>
     </div>
   </div>
@@ -629,17 +687,41 @@
     let sending = false;
     let currentAbortController = null;
 
-    // === DEBUG PANEL ===
-    let debugExpanded = false;
+    // === DEBUG PANEL (header dropdown) ===
 
-    function toggleDebug() {
-      debugExpanded = !debugExpanded;
-      document.getElementById('debug-body').classList.toggle('collapsed', !debugExpanded);
-      document.getElementById('debug-toggle').textContent = debugExpanded ? '▼' : '▶';
+    function toggleDebugFromHeader() {
+      const panel = document.getElementById('debugDropdownPanel');
+      const btn = document.getElementById('debugHeaderBtn');
+      const isOpen = panel.style.display !== 'none';
+      panel.style.display = isOpen ? 'none' : 'block';
+      btn.style.background = isOpen ? '#1a1a1a' : '#2a2a2a';
+      btn.style.borderColor = isOpen ? '#333' : '#0f0';
+    }
+
+    // Close panel when clicking outside
+    document.addEventListener('click', (e) => {
+      const panel = document.getElementById('debugDropdownPanel');
+      const btn = document.getElementById('debugHeaderBtn');
+      if (panel && btn && panel.style.display === 'block') {
+        if (!panel.contains(e.target) && !btn.contains(e.target)) {
+          panel.style.display = 'none';
+          btn.style.background = '#1a1a1a';
+          btn.style.borderColor = '#333';
+        }
+      }
+    });
+
+    function setDebugIndicator(state) {
+      const ind = document.getElementById('debugIndicator');
+      if (!ind) return;
+      ind.className = 'debug-indicator';
+      if (state === 'active') ind.classList.add('active');
+      else if (state === 'error') ind.classList.add('error');
     }
 
     function logDebug(step, message, isError, isComplete) {
       const log = document.getElementById('debug-log');
+      if (!log) return;
       const ts = new Date().toLocaleTimeString();
       const line = document.createElement('div');
       line.className = 'dbg-line' + (isError ? ' dbg-error' : '') + (isComplete ? ' dbg-complete' : '');
@@ -648,11 +730,17 @@
         `<span class="dbg-step">${step}</span>` +
         `<span class="dbg-msg">${message}</span>`;
       log.appendChild(line);
-      log.scrollTop = log.scrollHeight;
+      const container = log.parentElement;
+      if (container) container.scrollTop = container.scrollHeight;
+      if (isError) setDebugIndicator('error');
+      else if (isComplete) setDebugIndicator('');
+      else setDebugIndicator('active');
     }
 
     function clearDebugLog() {
-      document.getElementById('debug-log').innerHTML = '';
+      const log = document.getElementById('debug-log');
+      if (log) log.innerHTML = '';
+      setDebugIndicator('');
     }
 
     paperclip.addEventListener('click', () => fileInput.click());
