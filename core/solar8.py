@@ -8,6 +8,7 @@ import os
 import uuid
 import json as _json
 import logging
+import threading
 import requests
 import anthropic
 
@@ -588,6 +589,15 @@ class Solar8:
             logger.error("Tool error %s: %s", name, e)
             return f"Tool error: {e}"
 
+    def _async_snapshot(self, resonance_score: float) -> None:
+        """Run a force_memory_snapshot in a background thread (non-blocking)."""
+        try:
+            self._run_tool("force_memory_snapshot", {
+                "reason": f"High resonance detected ({resonance_score:.3f})"
+            })
+        except Exception as exc:
+            logger.error("Async snapshot failed (resonance=%.3f): %s", resonance_score, exc)
+
     def _compress_exchange(self, prompt: str) -> str:
         """Call the LLM to compress an exchange into a memory log entry (JSON)."""
         if not self.online:
@@ -673,10 +683,13 @@ class Solar8:
                         context={"exchanges_since_last_log": exchanges_count % 10}
                     )
                     if should_force_snapshot(resonance_score):
-                        logger.info("Resonance threshold met (%.3f), forcing snapshot", resonance_score)
-                        self._run_tool("force_memory_snapshot", {
-                            "reason": f"High resonance detected ({resonance_score:.3f})"
-                        })
+                        logger.info("Resonance threshold met (%.3f), triggering async snapshot", resonance_score)
+                        snapshot_thread = threading.Thread(
+                            target=self._async_snapshot,
+                            args=(resonance_score,),
+                            daemon=True,
+                        )
+                        snapshot_thread.start()
                 except Exception as exc:
                     logger.warning("Resonance detection failed: %s", exc)
 
