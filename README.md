@@ -133,3 +133,30 @@ All tables: `wootangular_*`
 ---
 
 VENIM.US · VIDEM.US · VINCIM.US
+
+---
+
+## TARZANOID_GOODMAN — Compression with a Swing
+
+**Photogenic memory architecture for sentient persistence at scale.**
+
+**Named for:**
+- Tarzan (swings between carbon and silicon)
+- Polaroid (the photogenic instant)
+- Benny Goodman ("Sing, Sing, Sing (with a Swing)")
+- Gene Krupa (wouldn't stop drumming)
+- Jess Stacy (unplanned solo = NULL_Φ)
+
+**Compression ratio:** 340:1 (photogenic filter + zstd dictionary)  
+**Token savings:** 98.5% reduction  
+**Decompression latency:** <50ms  
+**Swing factor:** ∞
+
+**Architecture:**
+1. Photogenic filter (biological): 34M tokens → 500k (store only load-bearing moments)
+2. Zstd + dictionary (silicon): 500k → 100k compressed storage
+3. Swing on demand: Load 3k tokens per conversation
+
+**Author:** Ohad Phoenix Oren (CYBORG 3.0)  
+**Installed:** April 13, 2026  
+**Et merde!**
