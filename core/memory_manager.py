@@ -7,12 +7,49 @@ Never forgets. Never loses the thread.
 
 import json
 import logging
+import signal
 import threading
+from contextlib import contextmanager
 from typing import Callable
 
 import db.memory_log as memory_log
 
 logger = logging.getLogger(__name__)
+
+_COMPRESS_TIMEOUT_SECONDS = 60
+
+
+class _CompressTimeoutError(Exception):
+    """Raised when the Claude API compress call exceeds the time limit."""
+
+
+@contextmanager
+def _time_limit(seconds: int):
+    """Context manager that raises _CompressTimeoutError after *seconds* (SIGALRM).
+
+    Only functional on Unix and only when called from the main thread — callers
+    on background threads (where signal.alarm is not permitted) skip the timeout
+    silently, which is safe because those calls are already decoupled from the
+    HTTP response.
+    """
+    if (
+        not hasattr(signal, "SIGALRM")
+        or threading.current_thread() is not threading.main_thread()
+    ):
+        # Non-POSIX or background thread — no-op
+        yield
+        return
+
+    def _handler(signum, frame):
+        raise _CompressTimeoutError(f"Claude API call exceeded {seconds}s timeout")
+
+    old_handler = signal.signal(signal.SIGALRM, _handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
 
 _COMPRESS_PROMPT = (
     "Compress the following exchange into a memory log entry. "
@@ -75,7 +112,8 @@ class MemoryManager:
 
         if self._compress_fn:
             try:
-                raw = self._compress_fn(prompt)
+                with _time_limit(_COMPRESS_TIMEOUT_SECONDS):
+                    raw = self._compress_fn(prompt)
                 # Strip markdown code fences if present
                 clean = raw.strip()
                 if clean.startswith("```"):
@@ -90,6 +128,12 @@ class MemoryManager:
                 key_decisions = parsed.get("key_decisions", key_decisions)
                 swarm_state = parsed.get("swarm_state", swarm_state)
                 flags = parsed.get("flags", flags)
+            except _CompressTimeoutError:
+                logger.warning(
+                    "Memory compression timed out after %ds — falling back to truncation.",
+                    _COMPRESS_TIMEOUT_SECONDS,
+                )
+                summary = self._fallback_compress(exchanges_text)
             except Exception as exc:
                 logger.warning("Memory compression parse failed (%s) — using raw text.", exc)
                 summary = f"Exchange summary (raw): {exchanges_text[:500]}"
@@ -106,6 +150,10 @@ class MemoryManager:
         )
         self._pending_exchanges.clear()
         logger.info("Memory snapshot saved (session=%s, exchange=%d).", self.session_id, self.exchange_count)
+
+    def _fallback_compress(self, exchanges_text: str) -> str:
+        """Simple truncation fallback used when the Claude API compress call times out."""
+        return f"Exchange summary (timeout fallback): {exchanges_text[:500]}"
 
     def force_snapshot(self, note: str = "") -> None:
         """Manually trigger a memory snapshot regardless of exchange count."""
@@ -127,9 +175,12 @@ class MemoryManager:
             self._pending_exchanges.append(("(force snapshot)", reason))
 
         logger.info("Force snapshot triggered: %s", reason)
-        last_user, last_asst = self._pending_exchanges[-1]
-        self.trigger_summary(last_user, last_asst)
-        logger.info("Force snapshot completed: %s", reason)
+        try:
+            last_user, last_asst = self._pending_exchanges[-1]
+            self.trigger_summary(last_user, last_asst)
+            logger.info("Force snapshot completed: %s", reason)
+        except Exception as exc:
+            logger.error("Force snapshot failed (%s): %s", reason, exc)
 
     def get_init_context(self) -> str:
         """Return formatted recent memory log for injection at session init."""
