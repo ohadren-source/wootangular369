@@ -14,6 +14,7 @@ import anthropic
 import db.wootangular_banks as banks
 import db.memory_log as memory_log
 from core.memory_manager import MemoryManager
+from core.prime_director import PrimeDirector
 
 logger = logging.getLogger(__name__)
 
@@ -377,6 +378,8 @@ class Solar8:
     ]
 
     def __init__(self):
+        self.prime_director = PrimeDirector()
+
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
             logger.warning("ANTHROPIC_API_KEY not set. Sol Calarbone 8 offline.")
@@ -398,21 +401,24 @@ class Solar8:
         self._system_prompt = self._build_system_prompt()
         logger.info("Sol Calarbone 8 online. The hive has a voice.")
 
-    def _build_system_prompt(self) -> list[dict]:
-        """Returns system prompt as cacheable content blocks."""
+    def _build_system_prompt(self, mode: str = "speed") -> list[dict]:
+        """Returns system prompt as cacheable content blocks, mode-aware."""
         # OLD: Load entire init_cache corpus (50k+ tokens)
         # NEW: Swing through TARZANOID_GOODMAN (3k tokens, context-specific)
 
         from core.tarzanoid_goodman import TarzanoidGoodman
 
+        # Mode-aware swing limits
+        swing_limit = 3 if mode == "speed" else 10
+
         try:
             tg = TarzanoidGoodman(dict_path="dictionaries/wootangular369.dict")
 
             # Swing for core identity context
-            relevant = tg.swing(keyword="core_identity BOOL++ NULL_Φ GI;WG? TCP/UP", limit=3)
+            relevant = tg.swing(keyword="core_identity BOOL++ NULL_Φ GI;WG? TCP/UP", limit=swing_limit)
 
             corpus_block = (
-                "PHOTOGENIC MEMORY (TARZANOID_GOODMAN):\n\n"
+                f"PHOTOGENIC MEMORY (TARZANOID_GOODMAN) — {mode.upper()} MODE:\n\n"
                 + relevant["context"]
                 + f"\n\n(Loaded {relevant['token_count']} tokens via "
                 + f"{relevant['compression_ratio']} compression)\n"
@@ -421,7 +427,8 @@ class Solar8:
             )
 
             logger.info(
-                "TARZANOID_GOODMAN loaded %d tokens (swing factor: ∞)",
+                "TARZANOID_GOODMAN %s mode: %d tokens",
+                mode.upper(),
                 relevant["token_count"],
             )
         except Exception as exc:
@@ -609,9 +616,27 @@ class Solar8:
         texts = [b.text for b in response.content if hasattr(b, "text")]
         return " ".join(texts) if texts else "..."
 
-    def chat(self, message: str, history: list[dict], file: dict | None = None, files: list | None = None) -> str:
+    def chat(self, message: str, history: list[dict], mode: str = "auto",
+             file: dict | None = None, files: list | None = None) -> str:
         if not self.online:
             raise RuntimeError("Sol Calarbone 8 offline — API key not configured.")
+
+        # PRIME DIRECTOR: Direct the flow — Nile of Service, not Denial of Service
+        direction = self.prime_director.direct(message, mode)
+        if direction["redirected"]:
+            logger.warning("🚫 DoS prevented by Prime Director, redirected to Nile flow")
+        actual_mode = direction["mode"]
+        swing_limit = direction["swing_limit"]
+
+        # Build mode-aware system prompt for this request
+        system_prompt = self._build_system_prompt(mode=actual_mode)
+
+        logger.info(
+            "🌊 PRIME DIRECTOR: %s mode | token_limit=%s | swing_limit=%d",
+            actual_mode.upper(),
+            direction["token_limit"],
+            swing_limit,
+        )
 
         from core.resonance_detector import detect_resonance, should_force_snapshot, extract_jragon_terms
 
@@ -631,7 +656,7 @@ class Solar8:
             response = self._client.messages.create(
                 model="claude-sonnet-4-5",
                 max_tokens=4096,
-                system=self._system_prompt,
+                system=system_prompt,
                 messages=messages,
                 tools=self.TOOLS,
             )
@@ -693,10 +718,18 @@ class Solar8:
                         logger.warning("memory record_exchange failed: %s", exc)
                 return result_text
 
-    def stream(self, message: str, history: list[dict], file: dict | None = None, files: list | None = None):
+    def stream(self, message: str, history: list[dict], mode: str = "auto",
+               file: dict | None = None, files: list | None = None):
         """Streams Claude direct. No density gate. No blocking pre-passes. Pass 3 in action."""
         if not self.online:
             raise RuntimeError("Sol Calarbone 8 offline — API key not configured.")
+
+        # PRIME DIRECTOR: Direct the flow
+        direction = self.prime_director.direct(message, mode)
+        if direction["redirected"]:
+            logger.warning("🚫 DoS prevented by Prime Director (stream), redirected to Nile flow")
+        actual_mode = direction["mode"]
+        system_prompt = self._build_system_prompt(mode=actual_mode)
 
         content = self._build_content(message, file, files)
         messages = list(history) + [{"role": "user", "content": content}]
@@ -708,7 +741,7 @@ class Solar8:
             with self._client.messages.stream(
                 model="claude-sonnet-4-5",
                 max_tokens=4096,
-                system=self._system_prompt,
+                system=system_prompt,
                 messages=messages,
                 tools=self.TOOLS,
             ) as stream_obj:

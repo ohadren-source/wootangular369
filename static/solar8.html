@@ -158,6 +158,48 @@
     }
     .regen-btn:hover { color: #a0b4ff; border-color: #3a3a5c; }
 
+    .mode-selector {
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      color: #a0b4ff;
+      cursor: pointer;
+      font-family: 'Outfit', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      height: 44px;
+      padding: 0 10px;
+      flex-shrink: 0;
+      transition: background 0.15s, border-color 0.15s;
+      outline: none;
+    }
+    .mode-selector:hover { background: #1a1a2e; border-color: #3a3a5c; }
+    .mode-selector:focus { border-color: #3a3a5c; }
+
+    .mode-badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-right: 6px;
+    }
+    .mode-badge.speed { background: #0a2a0a; color: #4cff4c; border: 1px solid #2a4a2a; }
+    .mode-badge.deep  { background: #0a0a2a; color: #6b6bff; border: 1px solid #2a2a5c; }
+    .mode-badge.auto  { background: #1a1a1a; color: #999; border: 1px solid #333; }
+
+    .msg-meta {
+      margin-top: 6px;
+      font-size: 11px;
+      color: #555;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .token-usage { color: #444; }
+
     .code-wrapper { position: relative; margin: 8px 0; }
     .code-header {
       display: flex;
@@ -500,6 +542,11 @@
     <button class="paperclip-btn" id="mic-btn" title="Voice input">🎤</button>
     <input type="file" id="file-input" accept="image/*,.pdf,.txt,.py,.js,.ts,.md,.json,.csv,.html,.css" style="display:none" multiple />
     <textarea id="msg-input" placeholder="Say something…" rows="1"></textarea>
+    <select id="mode-selector" class="mode-selector" title="Response mode">
+      <option value="auto">Auto ▼</option>
+      <option value="speed">Speed ▼</option>
+      <option value="deep">Deep ▼</option>
+    </select>
     <button id="send-btn">Send</button>
   </div>
 
@@ -507,6 +554,14 @@
     const feed       = document.getElementById('feed');
     const input      = document.getElementById('msg-input');
     const sendBtn    = document.getElementById('send-btn');
+    const modeSelector = document.getElementById('mode-selector');
+
+    // Sticky mode persistence (localStorage key: calarb_mode)
+    const savedMode = localStorage.getItem('calarb_mode') || 'auto';
+    modeSelector.value = savedMode;
+    modeSelector.addEventListener('change', () => {
+      localStorage.setItem('calarb_mode', modeSelector.value);
+    });
     const paperclip  = document.getElementById('paperclip-btn');
     const fileInput  = document.getElementById('file-input');
     const chipBar    = document.getElementById('chip-bar');
@@ -730,7 +785,7 @@
       return row;
     }
 
-    function addBotMessage(text) {
+    function addBotMessage(text, mode) {
       const row = document.createElement('div');
       row.className = 'msg-row';
       const avatar = document.createElement('img');
@@ -780,7 +835,8 @@
         const regenThinking = addThinking('🔍 SolCalarbone8 is thinking…');
         const regenMsgHistory = [...history];
         history.push({ role: 'user', content: lastUserText });
-        const regenBody = { message: lastUserText, history: regenMsgHistory };
+        const regenMode = modeSelector.value;
+        const regenBody = { message: lastUserText, history: regenMsgHistory, mode: regenMode };
         try {
           const regenRes = await fetch('/api/chat', {
             method: 'POST',
@@ -791,7 +847,7 @@
           const regenData = await regenRes.json();
           regenThinking.remove();
           const regenReply = regenData.response || regenData.message || 'No response.';
-          addBotMessage(regenReply);
+          addBotMessage(regenReply, regenMode);
           history.push({ role: 'assistant', content: regenReply });
         } catch (regenErr) {
           try { regenThinking.remove(); } catch {}
@@ -809,6 +865,25 @@
         }
       };
       actions.appendChild(regenBtn);
+
+      // Mode badge + token estimate
+      if (mode) {
+        const meta = document.createElement('div');
+        meta.className = 'msg-meta';
+        const badge = document.createElement('span');
+        const modeLabel = mode === 'auto' ? 'auto' : mode;
+        badge.className = 'mode-badge ' + modeLabel;
+        badge.textContent = modeLabel;
+        meta.appendChild(badge);
+        const tokens = document.createElement('span');
+        tokens.className = 'token-usage';
+        // Rough estimate: ~4 chars per token
+        const est = Math.round(text.length / 4);
+        tokens.textContent = '~' + est + ' tokens';
+        meta.appendChild(tokens);
+        bubble.appendChild(meta);
+      }
+
       bubble.appendChild(actions);
 
       row.appendChild(bubble);
@@ -859,7 +934,8 @@
       const msgHistory = [...history];
       history.push({ role: 'user', content: text });
 
-      const body = { message: text, history: msgHistory };
+      const mode = modeSelector.value;
+      const body = { message: text, history: msgHistory, mode };
       if (filesSnapshot.length > 0) {
         const filesData = filesSnapshot.map(f => ({ name: f.name, mime_type: f.mime_type, data: f.data, is_text: f.is_text }));
         body.files = filesData;
@@ -880,7 +956,7 @@
         thinkingRow.remove();
         const reply = data.response || data.message || 'No response.';
         fullReply = reply;
-        addBotMessage(reply);
+        addBotMessage(reply, mode);
         history.push({ role: 'assistant', content: reply });
       } catch (err) {
         try { thinkingRow.remove(); } catch {}
