@@ -59,7 +59,7 @@ class MCPServer:
             return {"jsonrpc": "2.0", "id": req_id, "result": result}
         except Exception as e:
             logger.error("MCP handler error for %s: %s", method, e)
-            return self._error_response(req_id, -32603, str(e))
+            return self._error_response(req_id, -32603, "Internal handler error — check server logs.")
 
     # ── Handlers ──────────────────────────────────────────────
 
@@ -221,7 +221,7 @@ class MCPServer:
             logger.error("Tool %s error: %s", tool_name, e)
             return {
                 "isError": True,
-                "content": [{"type": "text", "text": f"Tool error: {e}"}]
+                "content": [{"type": "text", "text": f"Tool execution failed — check server logs."}]
             }
 
     def _handle_resources_list(self, params):
