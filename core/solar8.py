@@ -375,6 +375,47 @@ class Solar8:
                 },
                 "required": ["term", "definition"]
             }
+        },
+        {
+            "name": "generate_file",
+            "description": "Generate a downloadable file (markdown, HTML, or plain text) and store it in the session artifact store. Use when the user asks for a document, certification, spec, or any file to be created and downloaded. Returns a download URL for the individual file and a bundle URL for all session files as a ZIP.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "The full text content of the file"
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": "The filename including extension (e.g. 'SILICARB_Cert.md', 'spec.html', 'notes.txt')"
+                    },
+                    "format": {
+                        "type": "string",
+                        "enum": ["md", "txt", "html"],
+                        "description": "File format: md (Markdown), txt (plain text), html (HTML with GRINDARK styling)"
+                    },
+                    "session_id": {
+                        "type": "string",
+                        "description": "Session ID to group multiple files together. Use the same session_id across all generate_file calls in one conversation so the user can download them individually or as a ZIP bundle."
+                    }
+                },
+                "required": ["content", "filename", "format", "session_id"]
+            }
+        },
+        {
+            "name": "list_artifacts",
+            "description": "List all files generated in the current artifact session. Use to tell the user which files are ready — show individual download URLs and the bundle ZIP URL.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "The session ID to list artifacts for"
+                    }
+                },
+                "required": ["session_id"]
+            }
         }
     ]
 
@@ -583,6 +624,32 @@ class Solar8:
                     return f"Term '{term}' installed into knowledge base"
                 except Exception as e:
                     return f"Failed to install term: {e}"
+            elif name == "generate_file":
+                try:
+                    resp = requests.post(
+                        "http://localhost:8000/api/generate-file",
+                        json=inputs,
+                        timeout=10,
+                    )
+                    if resp.ok:
+                        return resp.json()
+                    return {"error": f"generate_file endpoint returned {resp.status_code}"}
+                except Exception as e:
+                    return {"error": str(e)}
+            elif name == "list_artifacts":
+                session_id = inputs.get("session_id", "")
+                if not session_id:
+                    return {"error": "session_id required"}
+                try:
+                    resp = requests.get(
+                        f"http://localhost:8000/api/artifacts/{session_id}",
+                        timeout=5,
+                    )
+                    if resp.ok:
+                        return resp.json()
+                    return {"error": f"list_artifacts endpoint returned {resp.status_code}"}
+                except Exception as e:
+                    return {"error": str(e)}
             else:
                 return f"Unknown tool: {name}"
         except Exception as e:

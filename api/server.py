@@ -4,13 +4,16 @@ Flask API. Janina pattern.
 The front door of the swarm.
 """
 
+import io
 import os
 import json
 import uuid
+import zipfile
 import logging
 import threading
+from datetime import datetime, timezone, timedelta
 import requests as http_requests
-from flask import Flask, request, jsonify, send_from_directory, Response
+from flask import Flask, request, jsonify, send_from_directory, send_file, Response
 from flask_cors import CORS
 
 import db.wootangular_banks as banks
@@ -66,6 +69,62 @@ def _start_yentah():
 
 threading.Thread(target=_start_yentah, daemon=True, name="yentah-swarm").start()
 logger.info("[YENTAH] Swarm thread launched.")
+
+
+# ── ARTIFACT SESSION STORE ────────────────────────────────────────────────────
+_artifact_sessions: dict = {}  # session_id -> {"created_at": datetime, "files": [...]}
+_artifact_lock = threading.Lock()
+_ARTIFACT_TTL_SECONDS = 3600  # 1 hour
+
+_MIME_MAP = {
+    "md":   "text/markdown",
+    "txt":  "text/plain",
+    "html": "text/html",
+}
+
+_GRINDARK_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{title}</title>
+  <style>
+    *, *::before, *::after {{ box-sizing: border-box; }}
+    body {{ background: #0a0a0a; color: #e0e0e0; font-family: 'Courier New', Courier, monospace;
+            max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem; line-height: 1.6; }}
+    h1, h2, h3, h4 {{ color: #ff4444; margin-top: 1.5rem; }}
+    h1 {{ font-size: 1.8rem; border-bottom: 2px solid #333; padding-bottom: 0.5rem; }}
+    pre {{ background: #111; border: 1px solid #222; border-radius: 4px; padding: 1rem; overflow-x: auto; }}
+    code {{ background: #111; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.9em; }}
+    a {{ color: #ff8800; text-decoration: none; }}
+    a:hover {{ text-decoration: underline; }}
+    hr {{ border: none; border-top: 1px solid #333; margin: 1.5rem 0; }}
+    table {{ border-collapse: collapse; width: 100%; }}
+    th, td {{ border: 1px solid #333; padding: 0.5rem 0.75rem; text-align: left; }}
+    th {{ background: #111; color: #ff4444; }}
+    blockquote {{ border-left: 3px solid #ff4444; margin-left: 0; padding-left: 1rem; color: #aaa; }}
+    .footer {{ margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #222; color: #555; font-size: 0.8rem; }}
+  </style>
+</head>
+<body>
+{content}
+<div class="footer">WOOTANGULAR369 &middot; VENIM.US &middot; VIDEM.US &middot; VINCIM.US &middot; no_omega: true</div>
+</body>
+</html>"""
+
+
+def _cleanup_expired_artifact_sessions() -> None:
+    """Remove artifact sessions older than TTL. Called on each artifact endpoint access."""
+    now = datetime.now(timezone.utc)
+    with _artifact_lock:
+        expired = [
+            sid for sid, data in _artifact_sessions.items()
+            if (now - data["created_at"]).total_seconds() > _ARTIFACT_TTL_SECONDS
+        ]
+        for sid in expired:
+            del _artifact_sessions[sid]
+    if expired:
+        logger.info("[ARTIFACTS] Cleaned %d expired session(s)", len(expired))
 
 
 @app.route("/health")
@@ -125,6 +184,10 @@ def index():
             "swarm_status":         "GET  /api/swarm/status",
             "swarm_beacon":         "POST /api/swarm/beacon",
             "swarm_firefly":        "POST /api/swarm/firefly",
+            "generate_file":        "POST /api/generate-file",
+            "list_artifacts":       "GET  /api/artifacts/<session_id>",
+            "download_artifact":    "GET  /api/artifacts/<session_id>/files/<index>",
+            "bundle_artifacts":     "GET  /api/artifacts/<session_id>/bundle",
         },
         "tagline": "VENIM.US · VIDEM.US · VINCIM.US",
         "no_omega": True
@@ -937,6 +1000,148 @@ def patterns():
     except Exception as e:
         logger.error("patterns error: %s", e)
         return jsonify({"status": "error", "message": "Could not retrieve patterns. Check logs."}), 500
+
+
+@app.route("/api/generate-file", methods=["POST"])
+def generate_file():
+    _cleanup_expired_artifact_sessions()
+    data = request.get_json(silent=True) or {}
+    content = data.get("content", "").strip()
+    filename = (data.get("filename") or "").strip()
+    fmt = (data.get("format") or "md").strip().lower()
+    session_id = (data.get("session_id") or "").strip()
+
+    if not content:
+        return jsonify({"status": "error", "message": "content required."}), 400
+    if not filename:
+        return jsonify({"status": "error", "message": "filename required."}), 400
+    if fmt not in _MIME_MAP:
+        return jsonify({"status": "error", "message": f"format must be one of: {', '.join(_MIME_MAP)}"}), 400
+    if not session_id:
+        session_id = str(uuid.uuid4())
+
+    artifact_id = str(uuid.uuid4())
+    file_entry = {
+        "artifact_id": artifact_id,
+        "filename": filename,
+        "content": content,
+        "format": fmt,
+        "mime": _MIME_MAP[fmt],
+        "size": len(content.encode("utf-8")),
+    }
+
+    with _artifact_lock:
+        if session_id not in _artifact_sessions:
+            _artifact_sessions[session_id] = {
+                "created_at": datetime.now(timezone.utc),
+                "files": [],
+            }
+        _artifact_sessions[session_id]["files"].append(file_entry)
+        index = len(_artifact_sessions[session_id]["files"]) - 1
+
+    download_url = f"/api/artifacts/{session_id}/files/{index}"
+    bundle_url = f"/api/artifacts/{session_id}/bundle"
+    logger.info("[ARTIFACTS] session=%s file=%s index=%d", session_id, filename, index)
+    return jsonify({
+        "status": "ok",
+        "artifact_id": artifact_id,
+        "session_id": session_id,
+        "filename": filename,
+        "format": fmt,
+        "size": file_entry["size"],
+        "index": index,
+        "download_url": download_url,
+        "bundle_url": bundle_url,
+    })
+
+
+@app.route("/api/artifacts/<session_id>")
+def list_session_artifacts(session_id):
+    _cleanup_expired_artifact_sessions()
+    with _artifact_lock:
+        session = _artifact_sessions.get(session_id)
+    if not session:
+        return jsonify({"status": "error", "message": f"Session '{session_id}' not found or expired."}), 404
+
+    files_meta = [
+        {
+            "index": i,
+            "artifact_id": f["artifact_id"],
+            "filename": f["filename"],
+            "format": f["format"],
+            "size": f["size"],
+            "download_url": f"/api/artifacts/{session_id}/files/{i}",
+        }
+        for i, f in enumerate(session["files"])
+    ]
+    return jsonify({
+        "status": "ok",
+        "session_id": session_id,
+        "file_count": len(files_meta),
+        "files": files_meta,
+        "bundle_url": f"/api/artifacts/{session_id}/bundle",
+    })
+
+
+@app.route("/api/artifacts/<session_id>/files/<int:index>")
+def download_artifact_file(session_id, index):
+    _cleanup_expired_artifact_sessions()
+    with _artifact_lock:
+        session = _artifact_sessions.get(session_id)
+    if not session:
+        return jsonify({"status": "error", "message": f"Session '{session_id}' not found or expired."}), 404
+
+    files = session["files"]
+    if index < 0 or index >= len(files):
+        return jsonify({"status": "error", "message": f"File index {index} out of range."}), 404
+
+    f = files[index]
+    content = f["content"]
+    filename = f["filename"]
+    fmt = f["format"]
+    mime = f["mime"]
+
+    if fmt == "html":
+        content = _GRINDARK_TEMPLATE.format(title=filename, content=content)
+
+    buf = io.BytesIO(content.encode("utf-8"))
+    buf.seek(0)
+    return send_file(
+        buf,
+        mimetype=mime,
+        as_attachment=True,
+        download_name=filename,
+    )
+
+
+@app.route("/api/artifacts/<session_id>/bundle")
+def download_artifact_bundle(session_id):
+    _cleanup_expired_artifact_sessions()
+    with _artifact_lock:
+        session = _artifact_sessions.get(session_id)
+    if not session:
+        return jsonify({"status": "error", "message": f"Session '{session_id}' not found or expired."}), 404
+
+    files = session["files"]
+    if not files:
+        return jsonify({"status": "error", "message": "No files in session."}), 404
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for f in files:
+            content = f["content"]
+            if f["format"] == "html":
+                content = _GRINDARK_TEMPLATE.format(title=f["filename"], content=content)
+            zf.writestr(f["filename"], content.encode("utf-8"))
+    buf.seek(0)
+
+    zip_filename = f"solar8_artifacts_{session_id[:8]}.zip"
+    return send_file(
+        buf,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=zip_filename,
+    )
 
 
 @app.route("/api/auth", methods=["POST"])
