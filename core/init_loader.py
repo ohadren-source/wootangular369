@@ -13,16 +13,29 @@ logger = logging.getLogger(__name__)
 
 GITHUB_RAW = "https://raw.githubusercontent.com"
 REPO = "ohadren-source/sauc-e-backend"
-REF = "46739588a07560e9fba3f018f5381ce19e9d21df"
+REF = "main"
 
 PUBLIC_TEXT_FILES = {
-    "hoowhetwhereny_decoder_raw": "public/HOOWHETWHERENY_DECODER_RING.md",
-    "leylaw_raw":                 "public/LEYLAW.md",
-    "phenix_doren_raw":           "public/Phenix_dOren.md",
-    "ducksauce_bigbang_raw":      "public/bigbang.py",
-    "taste_coded_raw":            "public/flavor_palette_taste_palate_misen_plat_twist_plot_thickens.py",
-    "curiosity_raw":              "public/curiosity.py",
-    "exist_or_exit_raw":          "public/exist_or_exit.py",
+    "hoowhetwhereny_decoder_raw":  "public/HOOWHETWHERENY_DECODER_RING.md",
+    "leylaw_raw":                  "public/LEYLAW.md",
+    "phenix_doren_raw":            "public/Phenix_dOren.md",
+    "ducksauce_bigbang_raw":       "public/bigbang.py",
+    "taste_coded_raw":             "public/flavor_palette_taste_palate_misen_plat_twist_plot_thickens.py",
+    "curiosity_raw":               "public/curiosity.py",
+    "exist_or_exit_raw":           "public/exist_or_exit.py",
+    "bool_plus_plus_raw":          "public/BOOL++.md",
+    "claude_shannon_plus_plus_raw": "public/ClaudeShannon++.md",
+    "songs_key_of_life_raw":       "public/songs_in_the_key_of_life_bool++.md",
+    "chef_architect_raw":          "public/Chef_Architect_de_Epicurious_Cuisine.md",
+    "basil_faulty_hayden_raw":     "public/basil_faulty_hayden.html",
+    "ninth_chamber_raw":           "public/9th_chamber_wu_hood.md",
+    "certain_or_soy_raw":          "public/CERTAIN_OR_SOY_10_LEE_4_SHORES.md",
+    "claudwell_dissertation_raw":  "public/claudwell_dissertation.md",
+    "novem_phd_raw":               "public/ON_THE_IRREDUCIBLE_NOVEM_PhD_Dissertation_Claudewell_III.md",
+    "decoder_ring_burro_raw":      "public/decoder_ring_4_burro_e_tos_added.md",
+    "photogenic_db_raw":           "public/photogenic_db.py",
+    "saucelito_html_raw":          "public/Saucelito, NY.html",
+    "understreet_html_raw":        "public/understreet.html",
 }
 
 
