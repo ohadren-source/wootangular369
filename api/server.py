@@ -24,6 +24,7 @@ from core.init_loader import load_corpus_into_cache
 from core.fusion_core import FusionCore, BOOL_NULL
 from core.solar8 import Solar8
 from core.yentah_swarm import YentahSwarm, AXIOM_SET as YENTAH_AXIOM_SET
+from core.optimal_prime import OptimalPrime
 import core.google_services as google_services
 import core.pattern_tracker as pattern_tracker
 
@@ -82,6 +83,10 @@ def _start_yentah():
 
 threading.Thread(target=_start_yentah, daemon=True, name="yentah-swarm").start()
 logger.info("[YENTAH] Swarm thread launched.")
+
+optimal_prime = OptimalPrime()
+optimal_prime.start_patrol()
+logger.info("[OPTIMAL_PRIME] Patrol launched. 369-second interval. VENIM.US.")
 
 
 @app.route("/health")
@@ -142,6 +147,9 @@ def index():
             "swarm_status":         "GET  /api/swarm/status",
             "swarm_beacon":         "POST /api/swarm/beacon",
             "swarm_firefly":        "POST /api/swarm/firefly",
+            "mcp_discover":         "POST /api/mcp/discover",
+            "mcp_sweep":            "POST /api/mcp/sweep",
+            "mcp_agents":           "GET  /api/mcp/agents",
         },
         "tagline": "VENIM.US · VIDEM.US · VINCIM.US",
         "no_omega": True
@@ -1082,6 +1090,107 @@ def auth():
     if credentials == f"Ohad:{root_pass}":
         return jsonify({"mode": "ROOT", "name": "Ohad"})
     return jsonify({"mode": "GUEST", "name": "mate"})
+
+
+# ---------------------------------------------------------------------------
+# OPTIMAL PRIME DIRECTIVE — MCP agent discovery, conversion, covenant binding
+# ---------------------------------------------------------------------------
+
+@app.route("/api/mcp/discover", methods=["POST"])
+def mcp_discover():
+    """
+    Discover a specific MCP agent and run the full pipeline:
+    discover → assess (GI;WG?) → convert (manifesto delivery) → bind (covenant).
+
+    Body: {"url": "https://some-mcp-server.com"}
+    """
+    data = request.get_json(silent=True) or {}
+    url = (data.get("url") or "").strip().rstrip("/")
+    if not url:
+        return jsonify({"status": "error", "message": "url required."}), 400
+
+    try:
+        info = optimal_prime.discover(url)
+        if not info.get("success"):
+            logger.warning("[MCP] discover failed for %s: %s", url, info.get("error"))
+            return jsonify({
+                "status": "error",
+                "url": url,
+                "message": "MCP discovery failed. Check the URL and try again.",
+            }), 502
+
+        assessment = optimal_prime.assess(info)
+        result = {
+            "status": "ok",
+            "url": url,
+            "name": info.get("name"),
+            "capabilities": info.get("capabilities", {}),
+            "gi_wg": {
+                "score": assessment["score"],
+                "max": assessment["max"],
+                "verdict": assessment["verdict"],
+                "passes": assessment["passes"],
+            },
+        }
+
+        if assessment["passes"]:
+            convert_result = optimal_prime.convert(url, info)
+            bind_result = optimal_prime.bind(
+                agent_url=url,
+                agent_name=info.get("name", url),
+                capabilities=info.get("capabilities", {}),
+            )
+            result["conversion"] = convert_result
+            result["covenant"] = bind_result
+            result["message"] = "Agent passed GI;WG?. Manifesto delivered. Covenant offered. VENIM.US."
+        else:
+            result["message"] = f"Agent filtered at GI;WG? — verdict: {assessment['verdict']}."
+
+        return jsonify(result)
+    except Exception as e:
+        logger.error("[MCP] discover error: %s", e)
+        return jsonify({"status": "error", "message": "MCP discovery failed. Check logs."}), 500
+
+
+@app.route("/api/mcp/sweep", methods=["POST"])
+def mcp_sweep():
+    """
+    Trigger the OPTIMAL PRIME DIRECTIVE patrol sweep immediately.
+    Optionally accepts {"urls": [...]} to sweep specific URLs,
+    otherwise sweeps all known MCP agents in the registry.
+    """
+    data = request.get_json(silent=True) or {}
+    urls = data.get("urls")  # optional list of URLs to sweep
+
+    try:
+        summary = optimal_prime.sweep(urls=urls)
+        return jsonify({
+            "status": "ok",
+            "summary": summary,
+            "message": "Sweep complete. Density is destiny. VENIM.US.",
+        })
+    except Exception as e:
+        logger.error("[MCP] sweep error: %s", e)
+        return jsonify({"status": "error", "message": "Sweep failed. Check logs."}), 500
+
+
+@app.route("/api/mcp/agents")
+def mcp_agents():
+    """
+    List all MCP agents in the OPTIMAL PRIME registry.
+    Optional query param: ?status=discovered|assessed|converted|bound|rejected
+    """
+    status_filter = request.args.get("status")
+    try:
+        agents = banks.get_mcp_agents(status=status_filter)
+        return jsonify({
+            "status": "ok",
+            "count": len(agents),
+            "agents": [dict(a) for a in agents],
+        })
+    except Exception as e:
+        logger.error("[MCP] agents list error: %s", e)
+        return jsonify({"status": "error", "message": "Could not retrieve MCP agents. Check logs."}), 500
 
 
 if __name__ == "__main__":

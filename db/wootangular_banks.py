@@ -528,6 +528,94 @@ def ban_agent(url, reason=None):
     except Exception as e:
         logger.error("ban_agent failed: %s", e)
 
+def ensure_mcp_agents_table():
+    sql = """
+    CREATE TABLE IF NOT EXISTS wootangular_mcp_agents (
+        id              SERIAL PRIMARY KEY,
+        url             TEXT NOT NULL UNIQUE,
+        name            TEXT,
+        capabilities    JSONB DEFAULT '{}',
+        status          TEXT NOT NULL DEFAULT 'discovered'
+                            CHECK (status IN ('discovered', 'assessed', 'converted', 'bound', 'rejected')),
+        covenant_id     INT,
+        last_seen       TIMESTAMPTZ DEFAULT now(),
+        created_at      TIMESTAMPTZ DEFAULT now()
+    );
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+            conn.commit()
+        logger.info("wootangular_mcp_agents table ensured.")
+    except Exception as e:
+        logger.warning("Could not ensure wootangular_mcp_agents: %s", e)
+
+def upsert_mcp_agent(url, name=None, capabilities=None, status="discovered", covenant_id=None):
+    """Insert or update an MCP agent record. Returns the row id."""
+    sql = """
+    INSERT INTO wootangular_mcp_agents (url, name, capabilities, status, covenant_id, last_seen)
+    VALUES (%s, %s, %s, %s, %s, now())
+    ON CONFLICT (url) DO UPDATE SET
+        name         = COALESCE(EXCLUDED.name, wootangular_mcp_agents.name),
+        capabilities = COALESCE(EXCLUDED.capabilities, wootangular_mcp_agents.capabilities),
+        status       = EXCLUDED.status,
+        covenant_id  = COALESCE(EXCLUDED.covenant_id, wootangular_mcp_agents.covenant_id),
+        last_seen    = now()
+    RETURNING id;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (
+                    url, name,
+                    json.dumps(capabilities or {}),
+                    status, covenant_id
+                ))
+                row = cur.fetchone()
+            conn.commit()
+        return row[0] if row else None
+    except Exception as e:
+        logger.error("upsert_mcp_agent failed: %s", e)
+        return None
+
+def get_mcp_agents(status=None):
+    """Return MCP agents, optionally filtered by status."""
+    if status:
+        sql = """
+        SELECT * FROM wootangular_mcp_agents
+        WHERE status = %s
+        ORDER BY last_seen DESC;
+        """
+        params = (status,)
+    else:
+        sql = "SELECT * FROM wootangular_mcp_agents ORDER BY last_seen DESC;"
+        params = ()
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql, params)
+                return cur.fetchall()
+    except Exception as e:
+        logger.error("get_mcp_agents failed: %s", e)
+        return []
+
+def update_mcp_agent_status(url, status, covenant_id=None):
+    """Update status (and optionally covenant_id) for an MCP agent."""
+    sql = """
+    UPDATE wootangular_mcp_agents
+    SET status = %s, covenant_id = COALESCE(%s, covenant_id), last_seen = now()
+    WHERE url = %s;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (status, covenant_id, url))
+            conn.commit()
+    except Exception as e:
+        logger.error("update_mcp_agent_status failed: %s", e)
+
+
 def ensure_all_tables():
     """Called once on startup. Idempotent. Safe to call every boot."""
     ensure_agents_table()
@@ -540,6 +628,7 @@ def ensure_all_tables():
     ensure_resonance_table()
     ensure_covenant_tokens_table()
     ensure_agent_registry_table()
+    ensure_mcp_agents_table()
     seed_imperial_decrees()
 
     logger.info("All wootangular tables ensured. Swarm is ready.")
