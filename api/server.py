@@ -492,7 +492,8 @@ def solar8_debug():
                 files=files if files else None,
             )
             response_text = response.get("text", "") if isinstance(response, dict) else response
-            yield f"data: {json.dumps({'step': 'COMPLETE', 'message': 'Response generated', 'response': response_text})}\n\n"
+            sources = response.get("sources", []) if isinstance(response, dict) else []
+            yield f"data: {json.dumps({'step': 'COMPLETE', 'message': 'Response generated', 'response': response_text, 'sources': sources})}\n\n"
 
         except Exception as exc:
             logger.error("[SOLAR8] debug error: %s", exc, exc_info=True)
