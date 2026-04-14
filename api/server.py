@@ -961,7 +961,9 @@ def auth():
 
     root_pass = os.getenv("ROOT_CREDENTIAL", "")
 
-    if root_pass and secrets.compare_digest(credentials, f"Ohad:{root_pass}"):
+    expected = f"Ohad:{root_pass}" if root_pass else ""
+
+    if expected and credentials and secrets.compare_digest(credentials, expected):
         return jsonify({"mode": "ROOT", "name": "Ohad"})
     else:
         return jsonify({"mode": "GUEST", "name": "mate"})
