@@ -679,6 +679,10 @@ class Solar8:
             logger.error("Tool error %s: %s", name, e)
             return f"Tool error: {e}"
 
+    def get_current_sources(self) -> list[dict]:
+        """Return the sources collected during the most recent chat() or stream() call."""
+        return list(self._current_sources)
+
     def _async_snapshot(self, resonance_score: float) -> None:
         """Run a force_memory_snapshot in a background thread (non-blocking)."""
         try:
