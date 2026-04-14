@@ -7,6 +7,7 @@ The front door of the swarm.
 import os
 import json
 import uuid
+import secrets
 import logging
 import threading
 import requests as http_requests
@@ -937,6 +938,33 @@ def patterns():
     except Exception as e:
         logger.error("patterns error: %s", e)
         return jsonify({"status": "error", "message": "Could not retrieve patterns. Check logs."}), 500
+
+
+@app.route("/api/auth", methods=["POST"])
+def auth():
+    """
+    Authenticate user and return mode.
+
+    Request body:
+        {
+            "credentials": "Ohad:route666"  # or any other input
+        }
+
+    Response:
+        {
+            "mode": "ROOT" | "GUEST",
+            "name": "Ohad" | "mate"
+        }
+    """
+    data = request.get_json(silent=True) or {}
+    credentials = data.get("credentials", "").strip()
+
+    root_pass = os.getenv("ROOT_CREDENTIAL", "")
+
+    if root_pass and secrets.compare_digest(credentials, f"Ohad:{root_pass}"):
+        return jsonify({"mode": "ROOT", "name": "Ohad"})
+    else:
+        return jsonify({"mode": "GUEST", "name": "mate"})
 
 
 if __name__ == "__main__":
