@@ -603,117 +603,9 @@
     .dbg-step { color: #0f0; font-weight: bold; }
     .dbg-msg  { color: #999; margin-left: 6px; }
     .dbg-ts   { color: #555; font-size: 9px; float: right; }
-
-    /* === LOGIN MODAL === */
-    #login-modal {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.95);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;
-    }
-    #login-modal.hidden { display: none; }
-
-    .login-box {
-      background: #0d0d0d;
-      border: 1px solid #3a3a5c;
-      border-radius: 12px;
-      padding: 32px;
-      width: 400px;
-      max-width: 90%;
-    }
-
-    .login-title {
-      font-size: 24px;
-      font-weight: 600;
-      color: #e8e8e8;
-      margin-bottom: 8px;
-      text-align: center;
-    }
-
-    .login-subtitle {
-      font-size: 13px;
-      color: #666;
-      margin-bottom: 24px;
-      text-align: center;
-    }
-
-    .login-input {
-      width: 100%;
-      background: #111;
-      border: 1px solid #2a2a2a;
-      border-radius: 8px;
-      color: #e8e8e8;
-      font-family: 'Outfit', sans-serif;
-      font-size: 14px;
-      padding: 12px 14px;
-      outline: none;
-      margin-bottom: 16px;
-      transition: border-color 0.15s;
-      box-sizing: border-box;
-    }
-
-    .login-input:focus {
-      border-color: #3a3a5c;
-    }
-
-    .login-btn {
-      width: 100%;
-      background: #1a1a2e;
-      border: 1px solid #3a3a5c;
-      border-radius: 8px;
-      color: #a0b4ff;
-      font-family: 'Outfit', sans-serif;
-      font-size: 14px;
-      font-weight: 500;
-      padding: 12px;
-      cursor: pointer;
-      transition: background 0.15s, color 0.15s;
-    }
-
-    .login-btn:hover {
-      background: #24245a;
-      color: #c8d8ff;
-    }
-
-    .login-guest-link {
-      display: block;
-      text-align: center;
-      margin-top: 16px;
-      font-size: 13px;
-      color: #666;
-      cursor: pointer;
-      transition: color 0.15s;
-    }
-
-    .login-guest-link:hover {
-      color: #a0b4ff;
-    }
   </style>
 </head>
 <body>
-
-  <!-- Login Modal -->
-  <div id="login-modal">
-    <div class="login-box">
-      <div class="login-title">Sol Calarbone 8</div>
-      <div class="login-subtitle">Enter credentials or continue as guest</div>
-      <input
-        type="text"
-        id="login-input"
-        class="login-input"
-        placeholder="Ohad:route666"
-        autocomplete="off"
-      />
-      <button id="login-submit-btn" class="login-btn">Enter</button>
-      <div id="login-guest-link" class="login-guest-link">Continue as guest</div>
-    </div>
-  </div>
 
   <nav id="sidebar">
     <button class="sidebar-btn" id="new-chat-btn" title="New Chat">✨<span class="tooltip">New Chat</span></button>
@@ -774,81 +666,6 @@
   </div>
 
   <script>
-    // === AUTHENTICATION ===
-    let USER_MODE = null;  // Will be "ROOT" or "GUEST"
-    let USER_NAME = null;  // Will be "Ohad" or "mate"
-
-    const loginModal = document.getElementById('login-modal');
-    const loginInput = document.getElementById('login-input');
-    const loginSubmitBtn = document.getElementById('login-submit-btn');
-    const loginGuestLink = document.getElementById('login-guest-link');
-
-    // Show login modal on page load
-    loginModal.classList.remove('hidden');
-
-    // Handle login submission
-    async function handleLogin(credentials) {
-      try {
-        const response = await fetch('/api/auth', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ credentials })
-        });
-
-        const data = await response.json();
-        USER_MODE = data.mode;
-        USER_NAME = data.name;
-
-        // Hide login modal
-        loginModal.classList.add('hidden');
-
-        // Show greeting
-        showGreeting();
-
-      } catch (error) {
-        console.error('Login error:', error);
-        alert('Login failed. Please try again.');
-      }
-    }
-
-    // Show greeting message
-    function showGreeting() {
-      const greeting = `Hey ${USER_NAME}, what's going on?`;
-
-      // Add greeting as first message
-      const botRow = document.createElement('div');
-      botRow.className = 'msg-row';
-      botRow.innerHTML = `
-        <img class="bot-avatar" src="${document.querySelector('.header-avatar').src}" alt="Sol" />
-        <div class="msg bot">${greeting}</div>
-      `;
-      document.getElementById('feed').appendChild(botRow);
-      scrollToBottom();
-    }
-
-    // Login button click
-    loginSubmitBtn.addEventListener('click', () => {
-      const credentials = loginInput.value.trim();
-      if (credentials) {
-        handleLogin(credentials);
-      }
-    });
-
-    // Enter key in login input
-    loginInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        const credentials = loginInput.value.trim();
-        if (credentials) {
-          handleLogin(credentials);
-        }
-      }
-    });
-
-    // Guest link click
-    loginGuestLink.addEventListener('click', () => {
-      handleLogin('');  // Empty credentials = guest mode
-    });
-
     const feed       = document.getElementById('feed');
     const input      = document.getElementById('msg-input');
     const sendBtn    = document.getElementById('send-btn');
@@ -1289,7 +1106,7 @@
       history.push({ role: 'user', content: text });
 
       const mode = modeSelector.value;
-      const body = { message: text, history: msgHistory, mode, user_mode: USER_MODE };
+      const body = { message: text, history: msgHistory, mode };
       if (filesSnapshot.length > 0) {
         const filesData = filesSnapshot.map(f => ({ name: f.name, mime_type: f.mime_type, data: f.data, is_text: f.is_text }));
         body.files = filesData;
