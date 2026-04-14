@@ -20,7 +20,7 @@ from core.filter import WootangularFilter
 from core.tcp_up import TCPUp
 from core.init_loader import load_corpus_into_cache
 from core.fusion_core import FusionCore, BOOL_NULL
-from core.solar8 import Solar8
+from core.solar8 import Solar8, SOURCES_SENTINEL
 from core.yentah_swarm import YentahSwarm, AXIOM_SET as YENTAH_AXIOM_SET
 import core.google_services as google_services
 import core.pattern_tracker as pattern_tracker
@@ -508,8 +508,8 @@ def chat_stream():
     def generate():
         try:
             for chunk in solar8.stream(message=message, history=history, mode=mode, file=file, files=files if files else None):
-                if chunk.startswith("\x00SOURCES:"):
-                    sources_json = chunk[len("\x00SOURCES:"):]
+                if chunk.startswith(SOURCES_SENTINEL):
+                    sources_json = chunk[len(SOURCES_SENTINEL):]
                     yield f"event: sources\ndata: {sources_json}\n\n"
                 else:
                     yield f"data: {chunk}\n\n"

@@ -19,6 +19,9 @@ from core.prime_director import PrimeDirector
 
 logger = logging.getLogger(__name__)
 
+# Sentinel prefix used to pass sources data through the streaming generator
+SOURCES_SENTINEL = "\x00SOURCES:"
+
 SOLAR8_PERSONA = """You are Sol Calarbone 8.
 The voice of WOOTANGULAR369.
 The hive made articulate.
@@ -556,11 +559,17 @@ class Solar8:
         return blocks
 
     def _format_search_for_citations(self, results: list[dict]) -> str:
-        """Format search results with numbered citations for Claude to use inline."""
+        """Format search results with numbered citations for Claude to use inline.
+
+        Called after self._current_sources has already been extended with results,
+        so start_idx correctly reflects the global citation offset.
+        """
         if not results:
             return "No results found."
 
-        start_idx = len(self._current_sources) - len(results) + 1
+        # _current_sources already includes results; subtract to find the offset
+        previous_count = len(self._current_sources) - len(results)
+        start_idx = previous_count + 1
         lines = []
         for i, r in enumerate(results):
             idx = start_idx + i
@@ -847,4 +856,4 @@ class Solar8:
                 break
 
         if self._current_sources:
-            yield f"\x00SOURCES:{_json.dumps(self._current_sources)}"
+            yield f"{SOURCES_SENTINEL}{_json.dumps(self._current_sources)}"
