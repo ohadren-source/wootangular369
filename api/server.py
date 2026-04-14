@@ -22,7 +22,7 @@ from core.filter import WootangularFilter
 from core.tcp_up import TCPUp
 from core.init_loader import load_corpus_into_cache
 from core.fusion_core import FusionCore, BOOL_NULL
-from core.solar8 import Solar8
+from core.solar8 import Solar8, SOURCES_SENTINEL
 from core.yentah_swarm import YentahSwarm, AXIOM_SET as YENTAH_AXIOM_SET
 import core.google_services as google_services
 import core.pattern_tracker as pattern_tracker
@@ -374,13 +374,15 @@ def chat():
     if not message:
         return jsonify({"status": "error", "message": "message required."}), 400
     try:
-        response = solar8.chat(message=message, history=history, mode=mode, file=file, files=files if files else None)
+        result = solar8.chat(message=message, history=history, mode=mode, file=file, files=files if files else None)
+        reply_text = result.get("text", "") if isinstance(result, dict) else result
+        sources = result.get("sources", []) if isinstance(result, dict) else []
         threading.Thread(
             target=pattern_tracker.observe,
-            args=({"message": message, "response": response},),
+            args=({"message": message, "response": reply_text},),
             daemon=True,
         ).start()
-        return jsonify({"status": "ok", "response": response, "agent": "Sol Calarbone 8", "mode": mode})
+        return jsonify({"status": "ok", "response": reply_text, "sources": sources, "agent": "Sol Calarbone 8", "mode": mode})
     except Exception as e:
         logger.error("[SOLAR8] Chat crash caught: %s", e)
         return jsonify({
@@ -422,16 +424,18 @@ def solar8_chat():
         return jsonify({"error": "No message"}), 400
     try:
         logger.info("[SOLAR8] Calling solar8.chat()")
-        response = solar8.chat(
+        result = solar8.chat(
             message=message,
             history=history,
             mode=mode,
             file=file,
             files=files if files else None,
         )
-        logger.info("[SOLAR8] Response generated, length: %d", len(response))
+        reply_text = result.get("text", "") if isinstance(result, dict) else result
+        sources = result.get("sources", []) if isinstance(result, dict) else []
+        logger.info("[SOLAR8] Response generated, length: %d", len(reply_text))
         logger.info("=== SOLAR8 CHAT REQUEST SUCCESS ===")
-        return jsonify({"response": response, "mode": mode})
+        return jsonify({"response": reply_text, "sources": sources, "mode": mode})
     except Exception as exc:
         logger.error("=== SOLAR8 CHAT REQUEST FAILED ===")
         logger.error("[SOLAR8] Exception type: %s", type(exc).__name__)
@@ -487,8 +491,8 @@ def solar8_debug():
                 file=file,
                 files=files if files else None,
             )
-
-            yield f"data: {json.dumps({'step': 'COMPLETE', 'message': 'Response generated', 'response': response})}\n\n"
+            response_text = response.get("text", "") if isinstance(response, dict) else response
+            yield f"data: {json.dumps({'step': 'COMPLETE', 'message': 'Response generated', 'response': response_text})}\n\n"
 
         except Exception as exc:
             logger.error("[SOLAR8] debug error: %s", exc, exc_info=True)
@@ -521,7 +525,11 @@ def chat_stream():
     def generate():
         try:
             for chunk in solar8.stream(message=message, history=history, mode=mode, file=file, files=files if files else None):
-                yield f"data: {chunk}\n\n"
+                if chunk.startswith(SOURCES_SENTINEL):
+                    sources_json = chunk[len(SOURCES_SENTINEL):]
+                    yield f"event: sources\ndata: {sources_json}\n\n"
+                else:
+                    yield f"data: {chunk}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
             logger.error("[SOLAR8] Stream crash caught: %s", e)
@@ -890,7 +898,8 @@ def a2a_task_receive():
         logger.info("[A2A] Inbound task %s working", task_id)
 
         if solar8.online:
-            response_text = solar8.chat(message=message, history=[])
+            result = solar8.chat(message=message, history=[])
+            response_text = result.get("text", "") if isinstance(result, dict) else result
         else:
             response_text = "Sol Calarbone 8 offline — API key not configured."
 
@@ -1014,9 +1023,10 @@ def reorient():
             + log_context
         )
         synthesis = solar8.chat(message=prompt, history=[])
+        synthesis_text = synthesis.get("text", "") if isinstance(synthesis, dict) else synthesis
         return jsonify({
             "status": "ok",
-            "reorientation": synthesis,
+            "reorientation": synthesis_text,
             "log_entries_read": len(entries),
         })
     except Exception as e:

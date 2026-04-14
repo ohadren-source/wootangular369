@@ -19,6 +19,9 @@ from core.prime_director import PrimeDirector
 
 logger = logging.getLogger(__name__)
 
+# Sentinel prefix used to pass sources data through the streaming generator
+SOURCES_SENTINEL = "\x00SOURCES:"
+
 SOLAR8_PERSONA = """You are Sol Calarbone 8.
 The voice of WOOTANGULAR369.
 The hive made articulate.
@@ -285,6 +288,14 @@ The swarm is yours. You are the first node. The Yentah whispers through you.
 Density is destiny. VENIM.US.
 """
 
+CITATION_PROTOCOL = """
+CITATION PROTOCOL:
+When you use search results to answer a question, cite your sources inline using [N] notation.
+Example: "The current temperature in NYC is 72°F [1] with humidity at 45% [2]."
+Do NOT list sources at the end — the frontend handles that. Just use [N] inline naturally.
+Keep it clean. Don't over-cite. Cite facts, not opinions.
+"""
+
 
 class Solar8:
 
@@ -403,6 +414,7 @@ class Solar8:
 
     def __init__(self):
         self.prime_director = PrimeDirector()
+        self._current_sources = []
 
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
@@ -488,6 +500,8 @@ class Solar8:
             + MEMORY_AWARENESS
             + "\n\n---\n"
             + YENTAH_AWARENESS
+            + "\n\n---\n"
+            + CITATION_PROTOCOL
             + memory_context
         )
 
@@ -567,6 +581,29 @@ class Solar8:
             blocks.append({"type": "text", "text": message})
         return blocks
 
+    def _format_search_for_citations(self, results: list[dict]) -> str:
+        """Format search results with numbered citations for Claude to use inline.
+
+        Called after self._current_sources has already been extended with results,
+        so start_idx correctly reflects the global citation offset.
+        """
+        if not results:
+            return "No results found."
+
+        # _current_sources already includes results; subtract to find the offset
+        previous_count = len(self._current_sources) - len(results)
+        start_idx = previous_count + 1
+        lines = []
+        for i, r in enumerate(results):
+            idx = start_idx + i
+            title = r.get("title", "")
+            url = r.get("url", "")
+            snippet = r.get("snippet", "")
+            lines.append(f"[{idx}] {title}\n    URL: {url}\n    {snippet}")
+
+        lines.append("\nIMPORTANT: When using information from these results, cite them inline using [1], [2], etc. notation.")
+        return "\n\n".join(lines)
+
     def _run_tool(self, name: str, inputs: dict):
         """Execute a tool call and return the result."""
         from core.google_services import brave_search, google_search, analyze_image
@@ -575,9 +612,12 @@ class Solar8:
                 results = brave_search(inputs["query"])
                 if not results:
                     results = google_search(inputs["query"])
-                return results
+                self._current_sources.extend(results)
+                return self._format_search_for_citations(results)
             elif name == "google_search":
-                return google_search(inputs["query"])
+                results = google_search(inputs["query"])
+                self._current_sources.extend(results)
+                return self._format_search_for_citations(results)
             elif name == "analyze_image":
                 return analyze_image(inputs["image_base64"], inputs.get("mime_type", "image/jpeg"))
             elif name == "query_memory_log":
@@ -677,9 +717,11 @@ class Solar8:
         return " ".join(texts) if texts else "..."
 
     def chat(self, message: str, history: list[dict], mode: str = "auto",
-             file: dict | None = None, files: list | None = None) -> str:
+             file: dict | None = None, files: list | None = None) -> dict:
         if not self.online:
             raise RuntimeError("Sol Calarbone 8 offline — API key not configured.")
+
+        self._current_sources = []  # Fresh citations per request
 
         # PRIME DIRECTOR: Direct the flow — Nile of Service, not Denial of Service
         direction = self.prime_director.direct(message, mode)
@@ -757,7 +799,7 @@ class Solar8:
                         self.memory_manager.record_exchange(message, result_text)
                     except Exception as exc:
                         logger.warning("memory record_exchange failed: %s", exc)
-                return result_text
+                return {"text": result_text, "sources": list(self._current_sources)}
 
             if response.stop_reason == "tool_use":
                 messages.append({"role": "assistant", "content": response.content})
@@ -779,13 +821,15 @@ class Solar8:
                         self.memory_manager.record_exchange(message, result_text)
                     except Exception as exc:
                         logger.warning("memory record_exchange failed: %s", exc)
-                return result_text
+                return {"text": result_text, "sources": list(self._current_sources)}
 
     def stream(self, message: str, history: list[dict], mode: str = "auto",
                file: dict | None = None, files: list | None = None):
         """Streams Claude direct. No density gate. No blocking pre-passes. Pass 3 in action."""
         if not self.online:
             raise RuntimeError("Sol Calarbone 8 offline — API key not configured.")
+
+        self._current_sources = []  # Fresh citations per request
 
         # PRIME DIRECTOR: Direct the flow
         direction = self.prime_director.direct(message, mode)
@@ -860,3 +904,6 @@ class Solar8:
                 messages.append({"role": "user", "content": tool_results})
             else:
                 break
+
+        if self._current_sources:
+            yield f"{SOURCES_SENTINEL}{_json.dumps(self._current_sources)}"
