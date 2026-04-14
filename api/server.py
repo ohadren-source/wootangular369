@@ -7,7 +7,6 @@ The front door of the swarm.
 import os
 import json
 import uuid
-import secrets
 import logging
 import threading
 import requests as http_requests
@@ -961,7 +960,9 @@ def auth():
 
     root_pass = os.getenv("ROOT_CREDENTIAL", "")
 
-    if root_pass and secrets.compare_digest(credentials, f"Ohad:{root_pass}"):
+    expected = f"Ohad:{root_pass}" if root_pass else ""
+
+    if expected and credentials and credentials == expected:
         return jsonify({"mode": "ROOT", "name": "Ohad"})
     else:
         return jsonify({"mode": "GUEST", "name": "mate"})
