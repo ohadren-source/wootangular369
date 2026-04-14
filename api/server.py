@@ -1105,7 +1105,6 @@ def download_artifact_file(session_id, index):
         content = _GRINDARK_TEMPLATE.format(title=filename, content=content)
 
     buf = io.BytesIO(content.encode("utf-8"))
-    buf.seek(0)
     return send_file(
         buf,
         mimetype=mime,
