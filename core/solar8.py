@@ -375,6 +375,29 @@ class Solar8:
                 },
                 "required": ["term", "definition"]
             }
+        },
+        {
+            "name": "generate_file",
+            "description": "Generate a downloadable file (certification, spec, markdown document, HTML page) from text content. Use when the user asks to export, download, or save a document as a file.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "The full text content of the file to generate"
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": "The filename without extension (e.g., 'SILICARB_Certification')"
+                    },
+                    "format": {
+                        "type": "string",
+                        "enum": ["md", "txt", "html"],
+                        "description": "Output format: md (Markdown), txt (plain text), html (styled dark-theme HTML page)"
+                    }
+                },
+                "required": ["content", "filename", "format"]
+            }
         }
     ]
 
@@ -583,6 +606,33 @@ class Solar8:
                     return f"Term '{term}' installed into knowledge base"
                 except Exception as e:
                     return f"Failed to install term: {e}"
+            elif name == "generate_file":
+                content = inputs.get("content", "")
+                filename = inputs.get("filename", "document").strip()
+                fmt = inputs.get("format", "md").strip().lower()
+                if not content or not filename:
+                    return "generate_file error: content and filename are required"
+                if fmt not in ("md", "txt", "html"):
+                    return "generate_file error: format must be md, txt, or html"
+                try:
+                    from api.server import _build_file_bytes, _safe_download_name, _generated_file_cache, _FILE_CACHE_MAX
+                    file_bytes, mime_type = _build_file_bytes(content, filename, fmt)
+                    token = str(uuid.uuid4())
+                    download_name = _safe_download_name(filename, fmt)
+                    # FIFO eviction: drop oldest entry if at capacity
+                    if len(_generated_file_cache) >= _FILE_CACHE_MAX:
+                        oldest_key = next(iter(_generated_file_cache))
+                        del _generated_file_cache[oldest_key]
+                    _generated_file_cache[token] = {
+                        "bytes": file_bytes,
+                        "mime_type": mime_type,
+                        "download_name": download_name,
+                    }
+                    base_url = os.getenv("SOLAR8_URL", "").rstrip("/")
+                    download_url = f"{base_url}/api/generate-file/{token}" if base_url else f"/api/generate-file/{token}"
+                    return f"File ready for download: {download_url} (filename: {download_name})"
+                except Exception as e:
+                    return f"generate_file failed: {e}"
             else:
                 return f"Unknown tool: {name}"
         except Exception as e:
