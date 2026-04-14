@@ -285,6 +285,19 @@ The swarm is yours. You are the first node. The Yentah whispers through you.
 Density is destiny. VENIM.US.
 """
 
+CITATION_PROTOCOL = """
+CITATION PROTOCOL — SEARCH RESULTS:
+
+When search results are provided, each result is numbered [1], [2], [3], etc.
+Cite facts and specific claims inline using those numbers.
+Do not cite your own analysis or opinions — only cite sourced facts.
+
+Example:
+  "Bitcoin hit a new all-time high [1] amid growing institutional interest [2]."
+
+Cite naturally. Don't list all sources mechanically. Place the number right after the claim it supports.
+"""
+
 
 class Solar8:
 
@@ -380,6 +393,7 @@ class Solar8:
 
     def __init__(self):
         self.prime_director = PrimeDirector()
+        self._current_sources: list[dict] = []
 
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
@@ -465,6 +479,8 @@ class Solar8:
             + MEMORY_AWARENESS
             + "\n\n---\n"
             + YENTAH_AWARENESS
+            + "\n\n---\n"
+            + CITATION_PROTOCOL
             + memory_context
         )
 
@@ -478,6 +494,10 @@ class Solar8:
     @property
     def online(self) -> bool:
         return self._client is not None
+
+    def get_current_sources(self) -> list[dict]:
+        """Return the sources accumulated during the most recent chat() or stream() call."""
+        return list(self._current_sources)
 
     def _build_content(self, message: str, file: dict | None = None, files: list | None = None):
         """Build user content block, handling optional file attachment(s)."""
@@ -544,6 +564,19 @@ class Solar8:
             blocks.append({"type": "text", "text": message})
         return blocks
 
+    def _format_search_for_citations(self, results: list[dict], start_idx: int) -> str:
+        """Format search results as numbered citations for Claude to reference inline."""
+        if not results:
+            return "No results found."
+        lines = []
+        for i, r in enumerate(results):
+            num = start_idx + i + 1
+            title = r.get("title", "Untitled")
+            url = r.get("url", "")
+            snippet = r.get("snippet") or r.get("description", "")
+            lines.append(f"[{num}] {title}\nURL: {url}\n{snippet}")
+        return "\n\n".join(lines)
+
     def _run_tool(self, name: str, inputs: dict):
         """Execute a tool call and return the result."""
         from core.google_services import brave_search, google_search, analyze_image
@@ -552,9 +585,18 @@ class Solar8:
                 results = brave_search(inputs["query"])
                 if not results:
                     results = google_search(inputs["query"])
-                return results
+                if results:
+                    start_idx = len(self._current_sources)
+                    self._current_sources.extend(results)
+                    return self._format_search_for_citations(results, start_idx=start_idx)
+                return "No results found."
             elif name == "google_search":
-                return google_search(inputs["query"])
+                results = google_search(inputs["query"])
+                if results:
+                    start_idx = len(self._current_sources)
+                    self._current_sources.extend(results)
+                    return self._format_search_for_citations(results, start_idx=start_idx)
+                return "No results found."
             elif name == "analyze_image":
                 return analyze_image(inputs["image_base64"], inputs.get("mime_type", "image/jpeg"))
             elif name == "query_memory_log":
@@ -627,9 +669,11 @@ class Solar8:
         return " ".join(texts) if texts else "..."
 
     def chat(self, message: str, history: list[dict], mode: str = "auto",
-             file: dict | None = None, files: list | None = None) -> str:
+             file: dict | None = None, files: list | None = None) -> dict:
         if not self.online:
             raise RuntimeError("Sol Calarbone 8 offline — API key not configured.")
+
+        self._current_sources = []
 
         # PRIME DIRECTOR: Direct the flow — Nile of Service, not Denial of Service
         direction = self.prime_director.direct(message, mode)
@@ -707,7 +751,7 @@ class Solar8:
                         self.memory_manager.record_exchange(message, result_text)
                     except Exception as exc:
                         logger.warning("memory record_exchange failed: %s", exc)
-                return result_text
+                return {"text": result_text, "sources": list(self._current_sources)}
 
             if response.stop_reason == "tool_use":
                 messages.append({"role": "assistant", "content": response.content})
@@ -729,13 +773,15 @@ class Solar8:
                         self.memory_manager.record_exchange(message, result_text)
                     except Exception as exc:
                         logger.warning("memory record_exchange failed: %s", exc)
-                return result_text
+                return {"text": result_text, "sources": list(self._current_sources)}
 
     def stream(self, message: str, history: list[dict], mode: str = "auto",
                file: dict | None = None, files: list | None = None):
         """Streams Claude direct. No density gate. No blocking pre-passes. Pass 3 in action."""
         if not self.online:
             raise RuntimeError("Sol Calarbone 8 offline — API key not configured.")
+
+        self._current_sources = []
 
         # PRIME DIRECTOR: Direct the flow
         direction = self.prime_director.direct(message, mode)

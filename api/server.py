@@ -357,13 +357,15 @@ def chat():
     if not message:
         return jsonify({"status": "error", "message": "message required."}), 400
     try:
-        response = solar8.chat(message=message, history=history, mode=mode, file=file, files=files if files else None)
+        result = solar8.chat(message=message, history=history, mode=mode, file=file, files=files if files else None)
+        response_text = result["text"]
+        sources = result["sources"]
         threading.Thread(
             target=pattern_tracker.observe,
-            args=({"message": message, "response": response},),
+            args=({"message": message, "response": response_text},),
             daemon=True,
         ).start()
-        return jsonify({"status": "ok", "response": response, "agent": "Sol Calarbone 8", "mode": mode})
+        return jsonify({"status": "ok", "response": response_text, "sources": sources, "agent": "Sol Calarbone 8", "mode": mode})
     except Exception as e:
         logger.error("[SOLAR8] Chat crash caught: %s", e)
         return jsonify({
@@ -405,16 +407,18 @@ def solar8_chat():
         return jsonify({"error": "No message"}), 400
     try:
         logger.info("[SOLAR8] Calling solar8.chat()")
-        response = solar8.chat(
+        result = solar8.chat(
             message=message,
             history=history,
             mode=mode,
             file=file,
             files=files if files else None,
         )
-        logger.info("[SOLAR8] Response generated, length: %d", len(response))
+        response_text = result["text"]
+        sources = result["sources"]
+        logger.info("[SOLAR8] Response generated, length: %d", len(response_text))
         logger.info("=== SOLAR8 CHAT REQUEST SUCCESS ===")
-        return jsonify({"response": response, "mode": mode})
+        return jsonify({"response": response_text, "sources": sources, "mode": mode})
     except Exception as exc:
         logger.error("=== SOLAR8 CHAT REQUEST FAILED ===")
         logger.error("[SOLAR8] Exception type: %s", type(exc).__name__)
@@ -463,7 +467,7 @@ def solar8_debug():
             yield f"data: {json.dumps({'step': 'SOIOS', 'message': 'SOIOS emergence check'})}\n\n"
             yield f"data: {json.dumps({'step': 'FINALIZE', 'message': 'THE WRITER finalizing response'})}\n\n"
 
-            response = solar8.chat(
+            result = solar8.chat(
                 message=message,
                 history=history,
                 mode=mode,
@@ -471,7 +475,7 @@ def solar8_debug():
                 files=files if files else None,
             )
 
-            yield f"data: {json.dumps({'step': 'COMPLETE', 'message': 'Response generated', 'response': response})}\n\n"
+            yield f"data: {json.dumps({'step': 'COMPLETE', 'message': 'Response generated', 'response': result['text'], 'sources': result['sources']})}\n\n"
 
         except Exception as exc:
             logger.error("[SOLAR8] debug error: %s", exc, exc_info=True)
@@ -505,6 +509,9 @@ def chat_stream():
         try:
             for chunk in solar8.stream(message=message, history=history, mode=mode, file=file, files=files if files else None):
                 yield f"data: {chunk}\n\n"
+            sources = solar8.get_current_sources()
+            if sources:
+                yield f"event: sources\ndata: {json.dumps(sources)}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
             logger.error("[SOLAR8] Stream crash caught: %s", e)
