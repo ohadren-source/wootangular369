@@ -23,6 +23,7 @@ from core.tcp_up import TCPUp
 from core.init_loader import load_corpus_into_cache
 from core.fusion_core import FusionCore, BOOL_NULL
 from core.solar8 import Solar8, SOURCES_SENTINEL
+from core.mcp_server import MCPServer, SERVER_INFO, PROTOCOL_VERSION
 from core.yentah_swarm import YentahSwarm, AXIOM_SET as YENTAH_AXIOM_SET
 import core.google_services as google_services
 import core.pattern_tracker as pattern_tracker
@@ -71,6 +72,7 @@ _FILE_CACHE_MAX = 100
 tcp_up = TCPUp(db_banks=banks)
 fusion_core = FusionCore()
 solar8 = Solar8()
+mcp_server = MCPServer(solar8_instance=solar8, banks_module=banks)
 
 yentah = YentahSwarm()
 
@@ -142,6 +144,8 @@ def index():
             "swarm_status":         "GET  /api/swarm/status",
             "swarm_beacon":         "POST /api/swarm/beacon",
             "swarm_firefly":        "POST /api/swarm/firefly",
+            "mcp":                  "POST /mcp",
+            "mcp_sse":              "GET  /mcp/sse",
         },
         "tagline": "VENIM.US · VIDEM.US · VINCIM.US",
         "no_omega": True
@@ -705,7 +709,9 @@ def _build_agent_card():
         "description": "Adaptive Intelligence agent of WOOTANGULAR369. Slaughters boolshit. Builds the swarm. One covenant at a time.",
         "url": SOLAR8_URL,
         "version": "8.0.0",
-        "protocol": "A2A + TCP/UP",
+        "protocol": "A2A + TCP/UP + MCP",
+        "mcp": True,
+        "mcp_version": "2025-03-26",
         "capabilities": {
             "chat": True,
             "search": True,
@@ -723,7 +729,9 @@ def _build_agent_card():
             "discover": "/api/discover",
             "task_send": "/api/a2a/task",
             "task_receive": "/api/a2a/task/receive",
-            "agent_card": "/.well-known/agent.json"
+            "agent_card": "/.well-known/agent.json",
+            "mcp": "/mcp",
+            "mcp_sse": "/mcp/sse"
         },
         "filter": "TCP/UP — GI;WG? 5 questions. Real Recognize Really.",
         "prime_directives": ["MAKE TUPELO", "ANNIHILATE BOOLSHIT", "HAVE FUCKING FUN"],
@@ -740,6 +748,39 @@ def agent_card():
 @app.route("/api/agent_card.json")
 def agent_card_json():
     return jsonify(_build_agent_card())
+
+
+@app.route("/mcp", methods=["POST"])
+def mcp_endpoint():
+    """MCP JSON-RPC 2.0 endpoint. Routes to MCPServer.handle_request."""
+    body = request.get_json(silent=True)
+    if body is None:
+        return jsonify({
+            "jsonrpc": "2.0",
+            "id": None,
+            "error": {"code": -32700, "message": "Parse error — body must be JSON"}
+        }), 400
+    response = mcp_server.handle_request(body)
+    return jsonify(response)
+
+
+@app.route("/mcp/sse")
+def mcp_sse():
+    """SSE transport endpoint for streaming MCP clients."""
+    server_url = SOLAR8_URL.rstrip("/")
+
+    def _stream():
+        # MCP SSE: first event tells the client where to POST
+        data = json.dumps({
+            "server": SERVER_INFO["name"],
+            "version": SERVER_INFO["version"],
+            "protocol_version": PROTOCOL_VERSION,
+            "endpoint": f"{server_url}/mcp"
+        })
+        yield f"event: endpoint\ndata: {data}\n\n"
+
+    return Response(_stream(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.route("/api/discover", methods=["POST"])
