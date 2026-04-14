@@ -707,7 +707,7 @@
         type="text"
         id="login-input"
         class="login-input"
-        placeholder="Ohad:route666"
+        placeholder="username:password"
         autocomplete="off"
       />
       <button id="login-submit-btn" class="login-btn">Enter</button>
@@ -795,6 +795,11 @@
           body: JSON.stringify({ credentials })
         });
 
+        if (response.status === 401) {
+          alert('Invalid credentials. Please try again.');
+          return;
+        }
+
         const data = await response.json();
         USER_MODE = data.mode;
         USER_NAME = data.name;
@@ -813,7 +818,7 @@
 
     // Show greeting message
     function showGreeting() {
-      const greeting = `Hey ${USER_NAME}, what's going on?`;
+      const greeting = `Hey ${USER_NAME}, what's going on? 😊`;
 
       // Add greeting as first message
       const botRow = document.createElement('div');
