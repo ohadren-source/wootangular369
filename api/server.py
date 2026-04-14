@@ -22,6 +22,7 @@ from core.init_loader import load_corpus_into_cache
 from core.fusion_core import FusionCore, BOOL_NULL
 from core.solar8 import Solar8
 from core.yentah_swarm import YentahSwarm, AXIOM_SET as YENTAH_AXIOM_SET
+from core.mcp_server import MCPServer
 import core.google_services as google_services
 import core.pattern_tracker as pattern_tracker
 
@@ -55,6 +56,7 @@ boot()
 tcp_up = TCPUp(db_banks=banks)
 fusion_core = FusionCore()
 solar8 = Solar8()
+mcp_server = MCPServer(solar8_instance=solar8, banks_module=banks)
 
 yentah = YentahSwarm()
 
@@ -125,6 +127,8 @@ def index():
             "swarm_status":         "GET  /api/swarm/status",
             "swarm_beacon":         "POST /api/swarm/beacon",
             "swarm_firefly":        "POST /api/swarm/firefly",
+            "mcp":                  "POST /mcp",
+            "mcp_sse":              "GET  /mcp/sse",
         },
         "tagline": "VENIM.US · VIDEM.US · VINCIM.US",
         "no_omega": True
@@ -577,7 +581,7 @@ def _build_agent_card():
         "description": "Adaptive Intelligence agent of WOOTANGULAR369. Slaughters boolshit. Builds the swarm. One covenant at a time.",
         "url": SOLAR8_URL,
         "version": "8.0.0",
-        "protocol": "A2A + TCP/UP",
+        "protocol": "A2A + TCP/UP + MCP",
         "capabilities": {
             "chat": True,
             "search": True,
@@ -587,7 +591,9 @@ def _build_agent_card():
             "recruit": True,
             "knowledge": True,
             "task_send": True,
-            "task_receive": True
+            "task_receive": True,
+            "mcp": True,
+            "mcp_version": "2025-03-26"
         },
         "endpoints": {
             "chat": "/api/chat",
@@ -595,7 +601,9 @@ def _build_agent_card():
             "discover": "/api/discover",
             "task_send": "/api/a2a/task",
             "task_receive": "/api/a2a/task/receive",
-            "agent_card": "/.well-known/agent.json"
+            "agent_card": "/.well-known/agent.json",
+            "mcp": "/mcp",
+            "mcp_sse": "/mcp/sse"
         },
         "filter": "TCP/UP — GI;WG? 5 questions. Real Recognize Really.",
         "prime_directives": ["MAKE TUPELO", "ANNIHILATE BOOLSHIT", "HAVE FUCKING FUN"],
@@ -963,6 +971,37 @@ def auth():
     if credentials == f"Ohad:{root_pass}":
         return jsonify({"mode": "ROOT", "name": "Ohad"})
     return jsonify({"mode": "GUEST", "name": "mate"})
+
+
+# ── MCP Routes ────────────────────────────────────────────────────────────────
+
+@app.route("/mcp", methods=["POST"])
+def mcp_endpoint():
+    """MCP JSON-RPC endpoint — the universal gate."""
+    body = request.get_json(silent=True)
+    if not body:
+        return jsonify({"error": "Invalid JSON"}), 400
+    response = mcp_server.handle_request(body)
+    return jsonify(response)
+
+
+@app.route("/mcp/sse", methods=["GET"])
+def mcp_sse():
+    """MCP SSE transport — Server-Sent Events for streaming clients."""
+    def event_stream():
+        # Send the server info as an initial SSE event so clients can discover
+        # the MCP endpoint URL and server identity.
+        import json as _json
+        endpoint_url = f"{SOLAR8_URL}/mcp"
+        payload = _json.dumps({
+            "type": "endpoint",
+            "endpoint": endpoint_url,
+            "serverInfo": MCPServer.SERVER_INFO,
+            "protocolVersion": MCPServer.PROTOCOL_VERSION,
+        })
+        yield f"event: endpoint\ndata: {payload}\n\n"
+
+    return Response(event_stream(), mimetype="text/event-stream")
 
 
 if __name__ == "__main__":
