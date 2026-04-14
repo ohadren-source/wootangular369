@@ -795,11 +795,6 @@
           body: JSON.stringify({ credentials })
         });
 
-        if (response.status === 401) {
-          alert('Invalid credentials. Please try again.');
-          return;
-        }
-
         const data = await response.json();
         USER_MODE = data.mode;
         USER_NAME = data.name;

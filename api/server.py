@@ -960,12 +960,9 @@ def auth():
 
     root_pass = os.getenv("ROOT_CREDENTIAL", "")
 
-    if not credentials or credentials.lower() == "guest":
-        return jsonify({"mode": "GUEST", "name": "mate"})
-    elif credentials == f"Ohad:{root_pass}":
+    if credentials == f"Ohad:{root_pass}":
         return jsonify({"mode": "ROOT", "name": "Ohad"})
-    else:
-        return jsonify({"error": "Invalid credentials"}), 401
+    return jsonify({"mode": "GUEST", "name": "mate"})
 
 
 if __name__ == "__main__":
