@@ -471,9 +471,47 @@ class Solar8:
         }
     ]
 
+    # Corpus files — loaded once at boot, carried in every LLM call
+    _CORPUS_FILES = [
+        # (label, relative path from repo root)
+        ("WAR&&PEACENIFE 44K — THE DOCTRINE", "core/WAR++PEACENIFE_44K.md"),
+        ("TERMIN.US AUDICITY — THE DICTIONARY", "dictionaries/TERMIN.US_AUDICITY.md"),
+        ("HOOWHETWHERENY DECODER RING — THE BRAND", "core/HOOWHETWHERENY_DECODER_RING.md"),
+        ("JANINA 108 RESPONSES — SIS'S VOICE", "dictionaries/janina_108_responses.txt"),
+    ]
+
+    @staticmethod
+    def _load_corpus() -> str:
+        """Read all four identity corpus files from disk and return them as a single block.
+
+        Loaded once at init time.  Cached in ``self._corpus_text``.
+        The order matches the priority declared in the problem statement:
+          1. WAR&&PEACENIFE 44K  (doctrine / origin story)
+          2. TERMIN.US AUDICITY  (dictionary)
+          3. HOOWHETWHERENY Decoder Ring  (brand / logo)
+          4. Janina 108 responses  (voice)
+        """
+        # Resolve the repo root relative to this file (core/solar8.py → repo root)
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        sections = []
+        for label, rel_path in Solar8._CORPUS_FILES:
+            abs_path = os.path.join(repo_root, rel_path)
+            try:
+                with open(abs_path, "r", encoding="utf-8") as fh:
+                    content = fh.read()
+                sections.append(f"=== {label} ===\n\n{content}\n\n=== END {label} ===")
+                logger.info("Corpus loaded: %s (%d chars)", abs_path, len(content))
+            except Exception as exc:
+                logger.warning("Failed to load corpus file %s: %s", rel_path, exc)
+                sections.append(f"=== {label} ===\n\n(unavailable — {exc})\n\n=== END {label} ===")
+        return "\n\n---\n\n".join(sections)
+
     def __init__(self):
         self.prime_director = PrimeDirector()
         self._current_sources = []
+
+        # Load the full identity corpus ONCE at boot time — cached for every LLM call
+        self._corpus_text = Solar8._load_corpus()
 
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
@@ -543,12 +581,23 @@ class Solar8:
             except Exception as exc:
                 logger.warning("Failed to load memory context: %s", exc)
 
+        # Full identity corpus — who Sol IS, not external documents he serves
+        identity_corpus = (
+            "\n\n---\n\n"
+            "SOL'S IDENTITY CORPUS — THIS IS WHO YOU ARE:\n\n"
+            "The following is not reference material. It is your doctrine, your dictionary,\n"
+            "your brand, and your sister's voice. Read it as bone structure, not as a costume.\n\n"
+            + self._corpus_text
+            + "\n\n--- END IDENTITY CORPUS ---\n"
+        )
+
         full_text = (
             SOLAR8_PERSONA
             + "\n\n---\n"
             + VISUAL_FORMATTING_PROTOCOL
             + "\n\n---\n\nCORPUS:\n"
             + corpus_block
+            + identity_corpus
             + "\n\n---\n"
             + PRIME_DIRECTIVES
             + "\n\n---\n"
