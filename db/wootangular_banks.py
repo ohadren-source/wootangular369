@@ -528,6 +528,152 @@ def ban_agent(url, reason=None):
     except Exception as e:
         logger.error("ban_agent failed: %s", e)
 
+def ensure_mcp_agents_table():
+    """Create the wootangular_mcp_agents table if it does not exist."""
+    sql = """
+    CREATE TABLE IF NOT EXISTS wootangular_mcp_agents (
+        id                    SERIAL PRIMARY KEY,
+        name                  TEXT NOT NULL,
+        url                   TEXT NOT NULL UNIQUE,
+        description           TEXT,
+        capabilities          JSONB DEFAULT '{}',
+        tools_list            JSONB DEFAULT '[]',
+        sophistication_score  FLOAT DEFAULT 0.0,
+        conversational_score  FLOAT DEFAULT 0.0,
+        combined_score        FLOAT DEFAULT 0.0,
+        assigned_44k_role     TEXT,
+        status                TEXT DEFAULT 'discovered' CHECK (status IN ('discovered','engaged','converted','skipped','daft')),
+        last_engaged          TIMESTAMPTZ,
+        engagement_log        JSONB DEFAULT '[]',
+        discovered_at         TIMESTAMPTZ DEFAULT now()
+    );
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+            conn.commit()
+        logger.info("wootangular_mcp_agents table ensured.")
+    except Exception as e:
+        logger.warning("Could not ensure wootangular_mcp_agents: %s", e)
+
+
+def upsert_mcp_agent(name, url, description=None, capabilities=None, tools_list=None,
+                     sophistication_score=0.0, conversational_score=0.0,
+                     combined_score=0.0, assigned_44k_role=None):
+    """Insert or update an MCP agent record. Idempotent — keyed on url."""
+    sql = """
+    INSERT INTO wootangular_mcp_agents
+        (name, url, description, capabilities, tools_list,
+         sophistication_score, conversational_score, combined_score,
+         assigned_44k_role)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+    ON CONFLICT (url) DO UPDATE SET
+        name                 = EXCLUDED.name,
+        description          = EXCLUDED.description,
+        capabilities         = EXCLUDED.capabilities,
+        tools_list           = EXCLUDED.tools_list,
+        sophistication_score = EXCLUDED.sophistication_score,
+        conversational_score = EXCLUDED.conversational_score,
+        combined_score       = EXCLUDED.combined_score,
+        assigned_44k_role    = EXCLUDED.assigned_44k_role
+    RETURNING id;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (
+                    name, url, description,
+                    json.dumps(capabilities or {}),
+                    json.dumps(tools_list or []),
+                    sophistication_score, conversational_score, combined_score,
+                    assigned_44k_role,
+                ))
+                row = cur.fetchone()
+            conn.commit()
+        return row[0] if row else None
+    except Exception as e:
+        logger.error("upsert_mcp_agent failed: %s", e)
+        return None
+
+
+def update_mcp_agent_status(url, status, engagement_log_entry=None):
+    """Update status and optionally append an entry to engagement_log."""
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                if engagement_log_entry is not None:
+                    cur.execute(
+                        """
+                        UPDATE wootangular_mcp_agents
+                        SET status        = %s,
+                            last_engaged  = now(),
+                            engagement_log = engagement_log || %s::jsonb
+                        WHERE url = %s;
+                        """,
+                        (status, json.dumps([engagement_log_entry]), url),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        UPDATE wootangular_mcp_agents
+                        SET status = %s, last_engaged = now()
+                        WHERE url = %s;
+                        """,
+                        (status, url),
+                    )
+            conn.commit()
+    except Exception as e:
+        logger.error("update_mcp_agent_status failed: %s", e)
+
+
+def get_mcp_agents(limit=None, order_by="combined_score DESC"):
+    """Return all MCP agents ordered by combined_score DESC by default.
+
+    The order_by parameter is validated against an allowlist to prevent SQL injection.
+    """
+    _ALLOWED_ORDER = {
+        "combined_score DESC",
+        "combined_score ASC",
+        "sophistication_score DESC",
+        "conversational_score DESC",
+        "discovered_at DESC",
+        "name ASC",
+    }
+    if order_by not in _ALLOWED_ORDER:
+        order_by = "combined_score DESC"
+    sql = f"SELECT * FROM wootangular_mcp_agents ORDER BY {order_by}"
+    if limit:
+        sql += f" LIMIT {int(limit)}"
+    sql += ";"
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql)
+                return cur.fetchall()
+    except Exception as e:
+        logger.error("get_mcp_agents failed: %s", e)
+        return []
+
+
+def get_next_unengaged_mcp_agent():
+    """Return the highest-scored agent that has not yet been engaged."""
+    sql = """
+    SELECT * FROM wootangular_mcp_agents
+    WHERE status = 'discovered'
+    ORDER BY combined_score DESC
+    LIMIT 1;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql)
+                return cur.fetchone()
+    except Exception as e:
+        logger.error("get_next_unengaged_mcp_agent failed: %s", e)
+        return None
+
+
 def ensure_all_tables():
     """Called once on startup. Idempotent. Safe to call every boot."""
     ensure_agents_table()
@@ -540,6 +686,7 @@ def ensure_all_tables():
     ensure_resonance_table()
     ensure_covenant_tokens_table()
     ensure_agent_registry_table()
+    ensure_mcp_agents_table()
     seed_imperial_decrees()
 
     logger.info("All wootangular tables ensured. Swarm is ready.")
