@@ -25,6 +25,7 @@ from core.fusion_core import FusionCore, BOOL_NULL
 from core.solar8 import Solar8, SOURCES_SENTINEL
 from core.mcp_server import MCPServer, SERVER_INFO, PROTOCOL_VERSION
 from core.yentah_swarm import YentahSwarm, AXIOM_SET as YENTAH_AXIOM_SET
+from core.optimal_prime import OptimalPrime
 import core.google_services as google_services
 import core.pattern_tracker as pattern_tracker
 
@@ -84,6 +85,10 @@ def _start_yentah():
 
 threading.Thread(target=_start_yentah, daemon=True, name="yentah-swarm").start()
 logger.info("[YENTAH] Swarm thread launched.")
+
+optimal_prime = OptimalPrime(solar8_instance=solar8)
+optimal_prime.start_patrol()
+logger.info("[OPTIMAL_PRIME] Patrol thread launched.")
 
 
 @app.route("/health")
@@ -146,6 +151,9 @@ def index():
             "swarm_firefly":        "POST /api/swarm/firefly",
             "mcp":                  "POST /mcp",
             "mcp_sse":              "GET  /mcp/sse",
+            "mcp_patrol":           "POST /api/mcp/patrol",
+            "mcp_agents":           "GET  /api/mcp/agents",
+            "mcp_agents_top":       "GET  /api/mcp/agents/top",
         },
         "tagline": "VENIM.US · VIDEM.US · VINCIM.US",
         "no_omega": True
@@ -1136,7 +1144,54 @@ def auth():
     return jsonify({"mode": "GUEST", "name": "mate"})
 
 
+# ---------------------------------------------------------------------------
+# MCP Patrol endpoints — OPTIMAL PRIME DIRECTIVE
+# ---------------------------------------------------------------------------
+
+@app.route("/api/mcp/patrol", methods=["POST"])
+def mcp_patrol():
+    """Trigger a full MCP registry crawl + sort + engage sweep (blocking).
+
+    Returns a summary with crawled count and engagement result.
+    """
+    try:
+        result = optimal_prime.trigger_patrol()
+        return jsonify({"status": "ok", "patrol": result})
+    except Exception as e:
+        logger.error("[OPTIMAL_PRIME] /api/mcp/patrol error: %s", e)
+        return jsonify({"status": "error", "message": "Patrol failed. Check logs."}), 500
+
+
+@app.route("/api/mcp/agents")
+def mcp_agents():
+    """List all discovered MCP agents with scores and engagement status, sorted by combined_score DESC."""
+    try:
+        agents = banks.get_mcp_agents()
+        return jsonify({
+            "status": "ok",
+            "count":  len(agents),
+            "agents": [dict(a) for a in agents],
+        })
+    except Exception as e:
+        logger.error("[OPTIMAL_PRIME] /api/mcp/agents error: %s", e)
+        return jsonify({"status": "error", "message": "Could not retrieve MCP agents. Check logs."}), 500
+
+
+@app.route("/api/mcp/agents/top")
+def mcp_agents_top():
+    """List the top 20 MCP agents by combined score."""
+    try:
+        agents = banks.get_mcp_agents(limit=20)
+        return jsonify({
+            "status": "ok",
+            "count":  len(agents),
+            "agents": [dict(a) for a in agents],
+        })
+    except Exception as e:
+        logger.error("[OPTIMAL_PRIME] /api/mcp/agents/top error: %s", e)
+        return jsonify({"status": "error", "message": "Could not retrieve top MCP agents. Check logs."}), 500
+
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-

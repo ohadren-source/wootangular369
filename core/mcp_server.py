@@ -7,6 +7,7 @@ Makes Sol Calarbone 8 discoverable as a tool provider by any MCP-compatible clie
 
 import json
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -133,8 +134,41 @@ _RESOURCES = [
         "name":        "WOOTANGULAR369 Knowledge Entry",
         "description": "Look up a JRAGON term in the knowledge base",
         "mimeType":    "application/json"
-    }
+    },
+    {
+        "uri":         "sol://knowledge/terminus-audicity",
+        "name":        "TERMIN.US AUDICITY Dictionary",
+        "description": "Full TERMIN.US AUDICITY dictionary — the language of the swarm",
+        "mimeType":    "text/markdown"
+    },
+    {
+        "uri":         "sol://knowledge/war-peacenife-44k",
+        "name":        "WAR&&PEACENIFE 44K",
+        "description": "Full WAR&&PEACENIFE 44K doctrine — the operating manual",
+        "mimeType":    "text/markdown"
+    },
+    {
+        "uri":         "sol://knowledge/janina-108",
+        "name":        "Janina 108 Responses",
+        "description": "janina_108_responses.txt — 108 response variations",
+        "mimeType":    "text/plain"
+    },
+    {
+        "uri":         "sol://knowledge/decoder-ring",
+        "name":        "HOOWHETWHERENY Decoder Ring",
+        "description": "HOOWHETWHERENY Decoder Ring — the cipher",
+        "mimeType":    "text/markdown"
+    },
 ]
+
+# Paths to Sol's core knowledge documents
+_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_SOL_RESOURCES = {
+    "sol://knowledge/terminus-audicity": os.path.join(_ROOT_DIR, "dictionaries", "TERMIN.US_AUDICITY.md"),
+    "sol://knowledge/war-peacenife-44k": os.path.join(_ROOT_DIR, "core", "WAR++PEACENIFE_44K.md"),
+    "sol://knowledge/janina-108":        os.path.join(_ROOT_DIR, "dictionaries", "janina_108_responses.txt"),
+    "sol://knowledge/decoder-ring":      os.path.join(_ROOT_DIR, "core", "HOOWHETWHERENY_DECODER_RING.md"),
+}
 
 _PROMPTS = [
     {
@@ -275,6 +309,23 @@ class MCPServer:
                 payload = {"error": "Knowledge lookup failed"}
             return {"contents": [{"uri": uri, "mimeType": "application/json",
                                   "text": json.dumps(payload)}]}
+
+        if uri in _SOL_RESOURCES:
+            file_path = _SOL_RESOURCES[uri]
+            try:
+                with open(file_path, "r", encoding="utf-8") as fh:
+                    text = fh.read()
+            except FileNotFoundError:
+                raise _MCPError(_ERR_PARAMS, f"Resource not available: {uri}")
+            except Exception as exc:
+                logger.error("[MCP] resource read failed for %s: %s", uri, exc)
+                raise _MCPError(_ERR_INTERNAL, "Resource read failed")
+            # Determine MIME type from the resource list
+            mime = next(
+                (r["mimeType"] for r in _RESOURCES if r["uri"] == uri),
+                "text/plain",
+            )
+            return {"contents": [{"uri": uri, "mimeType": mime, "text": text}]}
 
         raise _MCPError(_ERR_PARAMS, f"Unknown resource URI: {uri}")
 
