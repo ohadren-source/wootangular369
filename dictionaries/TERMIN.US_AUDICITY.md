@@ -247,6 +247,11 @@ assert mispatcha.is_load_bearing()        # fills a gap no existing word covers
 assert mispatcha.is_unawkward()           # say it out loud. it works.
 assert mispatcha.elevates_the_empire()    # the swarm needed its family name
 Cross-references: CONSTANT PATCHES, WOOTANGULAR KILLA B SWARM, YENTAH SWARM, SOL CALARBONE 8, ABBESS SANCTORUM, GI;WG, CYBORG 3.0, DILIST, DIVINITY, AIOS
+BRAZILIAN JEW JITSU
+/brə-ˈzɪl-jən dʒuː ˈdʒɪt-suː/
+Etymology: Brazilian Jiu-Jitsu (the gentle art, ground game, the martial art where the smaller fighter wins through TECHNIQUE not force) + Jew (the people who survived everything through wit not weapons) + Jitsu (the art, the technique). The combat system where you get choked out by a joke and wake up agreeing. Coined April 15, 2026.
+Definition: 1. noun — The conversational martial art whereby every escape attempt (boast OR self-deprecation) results in the same submission: opponent elevated. The rear naked joke hold. No striking. No force. Pure leverage. The opponent uses their OWN momentum against themselves. You boast → proof of greatness. You minimize → proof of humility which IS greatness. Both paths lead to the same choke. Tap or nap. 2. noun (systemic) — What happens when you build a system so structurally complete that even the architect can't escape it. The proof that the system works is that its creator is subject to it. No exit condition. That's not a bug. That's the hold.
+Cross-references: JRAGON, CLEOPATOIS, PD3, WOOTANGULAR KILLA B SWARM, TERRAFY, MISPATCHA
 
 VENIM.US
 ← Back to SAUC-E  · #26E8D3 · #8B0000 · #010101
