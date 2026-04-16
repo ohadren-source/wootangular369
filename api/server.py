@@ -49,17 +49,17 @@ def _normalize_role(raw_role) -> str:
     return Solar8._normalize_role(raw_role)
 
 
-def _extract_docx_text(file_name: str, data_base64: str) -> str:
+def _extract_docx_text(file_name: str, base64_content: str) -> str:
     try:
         from docx import Document
     except ImportError:
-        raise RuntimeError("Word document support is unavailable right now. Please try again later.")
+        raise RuntimeError("Word document support is not available. The required dependency is missing.")
 
-    if not data_base64:
+    if not base64_content:
         raise RuntimeError(f"Uploaded file '{file_name}' is empty.")
 
     try:
-        raw = base64.b64decode(data_base64, validate=True)
+        raw = base64.b64decode(base64_content, validate=True)
     except (binascii.Error, ValueError):
         raise RuntimeError(f"Could not decode '{file_name}'. Please re-upload the .docx file.")
 
@@ -68,7 +68,7 @@ def _extract_docx_text(file_name: str, data_base64: str) -> str:
     except Exception:
         raise RuntimeError(f"Could not read '{file_name}'. Please upload a valid .docx file.")
 
-    lines = [p.text for p in doc.paragraphs if p.text and p.text.strip()]
+    lines = [p.text for p in doc.paragraphs if p.text.strip()]
     return "\n".join(lines)
 
 
@@ -77,13 +77,15 @@ def _preprocess_word_uploads(file: dict | None, files: list | None):
     if not all_files:
         return file, files, None
 
+    had_files = bool(files)
     processed = []
     for f in all_files:
         name = (f.get("name") or "document").strip()
         lower_name = name.lower()
+        ext = os.path.splitext(lower_name)[1]
         mime = (f.get("mime_type") or "").lower().strip()
-        is_docx = mime == DOCX_MIME or lower_name.endswith(".docx")
-        is_doc = (mime == DOC_MIME or lower_name.endswith(".doc")) and not lower_name.endswith(".docx")
+        is_docx = mime == DOCX_MIME or ext == ".docx"
+        is_doc = mime == DOC_MIME or ext == ".doc"
 
         if is_doc:
             logger.warning("[SOLAR8] Unsupported legacy .doc upload: %s", name)
@@ -99,9 +101,7 @@ def _preprocess_word_uploads(file: dict | None, files: list | None):
         else:
             processed.append(f)
 
-    if files:
-        return (processed[0] if processed else None), processed, None
-    return (processed[0] if processed else None), None, None
+    return (processed[0] if processed else None), (processed if had_files else None), None
 
 def boot():
     logger.info("=" * 60)
@@ -449,8 +449,8 @@ def chat():
             file = files[0]
     try:
         file, files, word_error = _preprocess_word_uploads(file, files if files else None)
-    except RuntimeError as exc:
-        return jsonify({"status": "error", "message": str(exc)}), 400
+    except RuntimeError:
+        return jsonify({"status": "error", "message": "Could not process the uploaded Word document. Please upload a valid .docx file."}), 400
     if word_error:
         return jsonify({"status": "error", "message": word_error}), 400
     if not message:
@@ -507,8 +507,8 @@ def solar8_chat():
     logger.info("[SOLAR8] File attached: %s, Files attached: %s", file is not None, bool(files))
     try:
         file, files, word_error = _preprocess_word_uploads(file, files if files else None)
-    except RuntimeError as exc:
-        return jsonify({"error": str(exc)}), 400
+    except RuntimeError:
+        return jsonify({"error": "Could not process the uploaded Word document. Please upload a valid .docx file."}), 400
     if word_error:
         return jsonify({"error": word_error}), 400
     if not message:
@@ -558,8 +558,8 @@ def solar8_debug():
     files = data.get("files", [])
     try:
         file, files, word_error = _preprocess_word_uploads(file, files if files else None)
-    except RuntimeError as exc:
-        return jsonify({"error": str(exc)}), 400
+    except RuntimeError:
+        return jsonify({"error": "Could not process the uploaded Word document. Please upload a valid .docx file."}), 400
     if word_error:
         return jsonify({"error": word_error}), 400
 
@@ -624,8 +624,8 @@ def chat_stream():
             file = files[0]
     try:
         file, files, word_error = _preprocess_word_uploads(file, files if files else None)
-    except RuntimeError as exc:
-        return jsonify({"status": "error", "message": str(exc)}), 400
+    except RuntimeError:
+        return jsonify({"status": "error", "message": "Could not process the uploaded Word document. Please upload a valid .docx file."}), 400
     if word_error:
         return jsonify({"status": "error", "message": word_error}), 400
     if not message:
