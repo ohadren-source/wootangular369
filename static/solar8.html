@@ -763,7 +763,7 @@
   <div id="input-bar">
     <button class="paperclip-btn" id="paperclip-btn" title="Attach file">📎</button>
     <button class="paperclip-btn" id="mic-btn" title="Voice input">🎤</button>
-    <input type="file" id="file-input" accept="image/*,.pdf,.txt,.py,.js,.ts,.md,.json,.csv,.html,.css" style="display:none" multiple />
+    <input type="file" id="file-input" accept="image/*,.pdf,.txt,.py,.js,.ts,.md,.json,.csv,.html,.css,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none" multiple />
     <textarea id="msg-input" placeholder="Say something…" rows="1"></textarea>
     <select id="mode-selector" class="mode-selector" title="Response mode">
       <option value="auto">Auto ▼</option>
@@ -934,6 +934,8 @@
         const isText = /\.(txt|py|js|ts|md|json|csv|html|css)$/i.test(f.name) ||
           ['text/plain','text/x-python','application/javascript','text/javascript',
            'text/markdown','application/json','text/csv','text/html','text/css'].includes(f.type);
+        const isWordBinary = /\.(doc|docx)$/i.test(f.name) ||
+          ['application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(f.type);
 
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -947,7 +949,7 @@
           feed.classList.add('with-chip');
           feed.style.bottom = (inputBar.offsetHeight + chipBar.offsetHeight) + 'px';
         };
-        isText ? reader.readAsText(f) : reader.readAsDataURL(f);
+        (isText && !isWordBinary) ? reader.readAsText(f) : reader.readAsDataURL(f);
       });
       fileInput.value = '';
     });
