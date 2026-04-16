@@ -372,7 +372,7 @@ class MCPServer:
         history = args.get("history") or []
         mode    = args.get("mode", "auto")
         try:
-            result = self._solar8.chat(message=message, history=history, mode=mode)
+            result = self._solar8.chat(message=message, history=history, mode=mode, role="ROOT")
             text   = result.get("text", "") if isinstance(result, dict) else str(result)
             return [{"type": "text", "text": text}]
         except Exception as exc:
@@ -389,7 +389,8 @@ class MCPServer:
             result = self._solar8.chat(
                 message=f"Search the web for: {query}",
                 history=[],
-                mode="speed"
+                mode="speed",
+                role="ROOT",
             )
             text = result.get("text", "") if isinstance(result, dict) else str(result)
             return [{"type": "text", "text": text}]
@@ -440,6 +441,7 @@ class MCPServer:
             result = self._solar8.chat(
                 message="Analyze this image.",
                 history=[],
+                role="ROOT",
                 file={"data": image_b64, "mime_type": mime_type}
             )
             text = result.get("text", "") if isinstance(result, dict) else str(result)

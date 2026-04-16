@@ -40,6 +40,11 @@ STATIC_DIR = os.path.join(ROOT_DIR, "static")
 
 SOLAR8_URL = os.getenv("SOLAR8_URL", "https://web-production-8b53fe.up.railway.app")
 
+
+def _normalize_role(raw_role) -> str:
+    role = str(raw_role or "GUEST").strip().upper()
+    return "ROOT" if role == "ROOT" else "GUEST"
+
 def boot():
     logger.info("=" * 60)
     logger.info("WOOTANGULAR369 BOOTING")
@@ -377,6 +382,7 @@ def chat():
     message = data.get("message", "").strip()
     history = data.get("history", [])
     mode = data.get("mode", "auto")
+    role = _normalize_role(data.get("role", "GUEST"))
     file = data.get("file") or None
     files = data.get("files", [])
     if files:
@@ -386,7 +392,7 @@ def chat():
     if not message:
         return jsonify({"status": "error", "message": "message required."}), 400
     try:
-        result = solar8.chat(message=message, history=history, mode=mode, file=file, files=files if files else None)
+        result = solar8.chat(message=message, history=history, mode=mode, role=role, file=file, files=files if files else None)
         reply_text = result.get("text", "") if isinstance(result, dict) else result
         sources = result.get("sources", []) if isinstance(result, dict) else []
         threading.Thread(
@@ -404,6 +410,7 @@ def chat():
 
 
 @app.route("/api/solar8/chat", methods=["POST"])
+@app.route("/api/chat/v2", methods=["POST"])
 def solar8_chat():
     """
     Chat with Sol Calarbone 8 with explicit mode support (Speed/Deep/Auto).
@@ -428,6 +435,8 @@ def solar8_chat():
     logger.info("[SOLAR8] History length: %d", len(history))
     mode = data.get("mode", "auto")
     logger.info("[SOLAR8] Mode: %s", mode)
+    role = _normalize_role(data.get("role", "GUEST"))
+    logger.info("[SOLAR8] Role: %s", role)
     file = data.get("file") or None
     files = data.get("files", [])
     logger.info("[SOLAR8] File attached: %s, Files attached: %s", file is not None, bool(files))
@@ -440,6 +449,7 @@ def solar8_chat():
             message=message,
             history=history,
             mode=mode,
+            role=role,
             file=file,
             files=files if files else None,
         )
@@ -457,6 +467,7 @@ def solar8_chat():
 
 
 @app.route("/api/solar8/debug", methods=["POST"])
+@app.route("/api/chat/debug", methods=["POST"])
 def solar8_debug():
     """
     Debug-enabled chat that streams execution steps as Server-Sent Events.
@@ -470,6 +481,7 @@ def solar8_debug():
     _raw_mode = data.get("mode", "auto")
     # Validate mode to a known set before embedding in SSE messages
     mode = _raw_mode if _raw_mode in ("auto", "speed", "deep") else "auto"
+    role = _normalize_role(data.get("role", "GUEST"))
     file = data.get("file") or None
     files = data.get("files", [])
 
@@ -500,6 +512,7 @@ def solar8_debug():
                 message=message,
                 history=history,
                 mode=mode,
+                role=role,
                 file=file,
                 files=files if files else None,
             )
@@ -524,6 +537,7 @@ def chat_stream():
     message = data.get("message", "").strip()
     history = data.get("history", [])
     mode = data.get("mode", "auto")
+    role = _normalize_role(data.get("role", "GUEST"))
     file = data.get("file") or None
     files = data.get("files", [])
     if files:
@@ -537,7 +551,7 @@ def chat_stream():
 
     def generate():
         try:
-            for chunk in solar8.stream(message=message, history=history, mode=mode, file=file, files=files if files else None):
+            for chunk in solar8.stream(message=message, history=history, mode=mode, role=role, file=file, files=files if files else None):
                 if chunk.startswith(SOURCES_SENTINEL):
                     sources_json = chunk[len(SOURCES_SENTINEL):]
                     yield f"event: sources\ndata: {sources_json}\n\n"
@@ -948,7 +962,7 @@ def a2a_task_receive():
         logger.info("[A2A] Inbound task %s working", task_id)
 
         if solar8.online:
-            result = solar8.chat(message=message, history=[])
+            result = solar8.chat(message=message, history=[], role="ROOT")
             response_text = result.get("text", "") if isinstance(result, dict) else result
         else:
             response_text = "Sol Calarbone 8 offline — API key not configured."
@@ -1072,7 +1086,7 @@ def reorient():
             "Be specific and grounded in what the log actually says.\n\n"
             + log_context
         )
-        synthesis = solar8.chat(message=prompt, history=[])
+        synthesis = solar8.chat(message=prompt, history=[], role="ROOT")
         synthesis_text = synthesis.get("text", "") if isinstance(synthesis, dict) else synthesis
         return jsonify({
             "status": "ok",
