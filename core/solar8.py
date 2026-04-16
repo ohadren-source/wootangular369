@@ -11,6 +11,7 @@ import logging
 import threading
 import requests
 import anthropic
+from typing import Optional
 
 import db.wootangular_banks as banks
 import db.memory_log as memory_log
@@ -531,11 +532,30 @@ class Solar8:
             auto_append_every=12,
             compress_fn=self._compress_exchange,
         )
-        self._system_prompt = self._build_system_prompt()
+        self._system_prompt = self._build_system_prompt(role="ROOT")
         logger.info("Sol Calarbone 8 online. The hive has a voice.")
 
-    def _build_system_prompt(self, mode: str = "speed") -> list[dict]:
+    @staticmethod
+    def _normalize_role(role: Optional[str] = None) -> str:
+        normalized_role = str(role or "GUEST").strip().upper()
+        return "ROOT" if normalized_role == "ROOT" else "GUEST"
+
+    def _build_system_prompt(self, mode: str = "speed", role: str = "GUEST") -> list[dict]:
         """Returns system prompt as cacheable content blocks, mode-aware."""
+        role = self._normalize_role(role)
+        if role != "ROOT":
+            # Security boundary: GUEST users get a minimal assistant prompt only,
+            # with no privileged corpus, memory context, or awareness protocol blocks.
+            return [
+                {
+                    "type": "text",
+                    "text": (
+                        "You are a helpful assistant. You are knowledgeable and conversational. "
+                        "Answer questions clearly and helpfully."
+                    ),
+                }
+            ]
+
         # OLD: Load entire init_cache corpus (50k+ tokens)
         # NEW: Swing through TARZANOID_GOODMAN (3k tokens, context-specific)
 
@@ -714,10 +734,13 @@ class Solar8:
         lines.append("\nIMPORTANT: When using information from these results, cite them inline using [1], [2], etc. notation.")
         return "\n\n".join(lines)
 
-    def _run_tool(self, name: str, inputs: dict):
+    def _run_tool(self, name: str, inputs: dict, role: str = "GUEST"):
         """Execute a tool call and return the result."""
         from core.google_services import brave_search, google_search, analyze_image
+        role = self._normalize_role(role)
         try:
+            if role != "ROOT" and name in {"query_memory_log", "force_memory_snapshot"}:
+                return "Memory operations are not available for GUEST users."
             if name == "brave_search":
                 results = brave_search(inputs["query"])
                 if not results:
@@ -798,7 +821,7 @@ class Solar8:
         try:
             self._run_tool("force_memory_snapshot", {
                 "reason": f"High resonance detected ({resonance_score:.3f})"
-            })
+            }, role="ROOT")
         except Exception as exc:
             logger.error("Async snapshot failed (resonance=%.3f): %s", resonance_score, exc)
 
@@ -831,9 +854,11 @@ class Solar8:
         return " ".join(texts) if texts else "..."
 
     def chat(self, message: str, history: list[dict], mode: str = "auto",
-             file: dict | None = None, files: list | None = None) -> dict:
+             role: str = "GUEST", file: dict | None = None, files: list | None = None) -> dict:
         if not self.online:
             raise RuntimeError("Sol Calarbone 8 offline — API key not configured.")
+        role = self._normalize_role(role)
+        is_root = role == "ROOT"
 
         self._current_sources = []  # Fresh citations per request
 
@@ -845,7 +870,7 @@ class Solar8:
         swing_limit = direction["swing_limit"]
 
         # Build mode-aware system prompt for this request
-        system_prompt = self._build_system_prompt(mode=actual_mode)
+        system_prompt = self._build_system_prompt(mode=actual_mode, role=role)
 
         logger.info(
             "🌊 PRIME DIRECTOR: %s mode | token_limit=%s | swing_limit=%d",
@@ -861,10 +886,10 @@ class Solar8:
 
         # AUTOMATIC TRIGGER 1: Query memory log every 10 exchanges
         exchanges_count = len([m for m in history if m.get("role") == "user"])
-        if exchanges_count > 0 and exchanges_count % 10 == 0:
+        if is_root and exchanges_count > 0 and exchanges_count % 10 == 0:
             logger.info("Auto-querying memory log (every 10 exchanges)")
             try:
-                self._run_tool("query_memory_log", {"limit": 3})
+                self._run_tool("query_memory_log", {"limit": 3}, role=role)
             except Exception as exc:
                 logger.warning("Auto memory query failed: %s", exc)
 
@@ -882,33 +907,35 @@ class Solar8:
                 result_text = " ".join(texts) if texts else "..."
 
                 # AUTOMATIC TRIGGER 2: Detect resonance and force snapshot if threshold met
-                try:
-                    resonance_score = detect_resonance(
-                        message=message,
-                        response=result_text,
-                        context={"exchanges_since_last_log": exchanges_count % 10}
-                    )
-                    if should_force_snapshot(resonance_score):
-                        logger.info("Resonance threshold met (%.3f), triggering async snapshot", resonance_score)
-                        snapshot_thread = threading.Thread(
-                            target=self._async_snapshot,
-                            args=(resonance_score,),
-                            daemon=True,
+                if is_root:
+                    try:
+                        resonance_score = detect_resonance(
+                            message=message,
+                            response=result_text,
+                            context={"exchanges_since_last_log": exchanges_count % 10}
                         )
-                        snapshot_thread.start()
-                except Exception as exc:
-                    logger.warning("Resonance detection failed: %s", exc)
+                        if should_force_snapshot(resonance_score):
+                            logger.info("Resonance threshold met (%.3f), triggering async snapshot", resonance_score)
+                            snapshot_thread = threading.Thread(
+                                target=self._async_snapshot,
+                                args=(resonance_score,),
+                                daemon=True,
+                            )
+                            snapshot_thread.start()
+                    except Exception as exc:
+                        logger.warning("Resonance detection failed: %s", exc)
 
                 # AUTOMATIC TRIGGER 3: Extract and install new JRAGON terms
-                try:
-                    new_terms = extract_jragon_terms(result_text)
-                    for term_data in new_terms:
-                        logger.info("Auto-installing term: %s", term_data['term'])
-                        self._run_tool("install_knowledge", term_data)
-                except Exception as exc:
-                    logger.warning("JRAGON term extraction failed: %s", exc)
+                if is_root:
+                    try:
+                        new_terms = extract_jragon_terms(result_text)
+                        for term_data in new_terms:
+                            logger.info("Auto-installing term: %s", term_data['term'])
+                            self._run_tool("install_knowledge", term_data, role=role)
+                    except Exception as exc:
+                        logger.warning("JRAGON term extraction failed: %s", exc)
 
-                if self.memory_manager:
+                if is_root and self.memory_manager:
                     try:
                         self.memory_manager.record_exchange(message, result_text)
                     except Exception as exc:
@@ -920,7 +947,7 @@ class Solar8:
                 tool_results = []
                 for block in response.content:
                     if block.type == "tool_use":
-                        result = self._run_tool(block.name, block.input)
+                        result = self._run_tool(block.name, block.input, role=role)
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": block.id,
@@ -930,7 +957,7 @@ class Solar8:
             else:
                 texts = [b.text for b in response.content if hasattr(b, "text")]
                 result_text = " ".join(texts) if texts else "..."
-                if self.memory_manager:
+                if is_root and self.memory_manager:
                     try:
                         self.memory_manager.record_exchange(message, result_text)
                     except Exception as exc:
@@ -938,10 +965,11 @@ class Solar8:
                 return {"text": result_text, "sources": list(self._current_sources)}
 
     def stream(self, message: str, history: list[dict], mode: str = "auto",
-               file: dict | None = None, files: list | None = None):
+               role: str = "GUEST", file: dict | None = None, files: list | None = None):
         """Streams Claude direct. No density gate. No blocking pre-passes. Pass 3 in action."""
         if not self.online:
             raise RuntimeError("Sol Calarbone 8 offline — API key not configured.")
+        role = self._normalize_role(role)
 
         self._current_sources = []  # Fresh citations per request
 
@@ -950,7 +978,7 @@ class Solar8:
         if direction["redirected"]:
             logger.warning("🚫 DoS prevented by Prime Director (stream), redirected to Nile flow")
         actual_mode = direction["mode"]
-        system_prompt = self._build_system_prompt(mode=actual_mode)
+        system_prompt = self._build_system_prompt(mode=actual_mode, role=role)
 
         content = self._build_content(message, file, files)
         messages = list(history) + [{"role": "user", "content": content}]
@@ -1009,7 +1037,7 @@ class Solar8:
                 tool_results = []
                 for block in collected_content:
                     if block.get("type") == "tool_use":
-                        result = self._run_tool(block["name"], block["input"])
+                        result = self._run_tool(block["name"], block["input"], role=role)
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": block["id"],
