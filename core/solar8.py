@@ -11,6 +11,7 @@ import logging
 import threading
 import requests
 import anthropic
+from typing import Optional
 
 import db.wootangular_banks as banks
 import db.memory_log as memory_log
@@ -535,14 +536,16 @@ class Solar8:
         logger.info("Sol Calarbone 8 online. The hive has a voice.")
 
     @staticmethod
-    def _normalize_role(role: str) -> str:
-        normalized = str(role or "GUEST").strip().upper()
-        return "ROOT" if normalized == "ROOT" else "GUEST"
+    def _normalize_role(role: Optional[str] = None) -> str:
+        normalized_role = str(role or "GUEST").strip().upper()
+        return "ROOT" if normalized_role == "ROOT" else "GUEST"
 
     def _build_system_prompt(self, mode: str = "speed", role: str = "GUEST") -> list[dict]:
         """Returns system prompt as cacheable content blocks, mode-aware."""
         role = self._normalize_role(role)
         if role != "ROOT":
+            # Security boundary: GUEST users get a minimal assistant prompt only,
+            # with no privileged corpus, memory context, or awareness protocol blocks.
             return [
                 {
                     "type": "text",
@@ -731,13 +734,13 @@ class Solar8:
         lines.append("\nIMPORTANT: When using information from these results, cite them inline using [1], [2], etc. notation.")
         return "\n\n".join(lines)
 
-    def _run_tool(self, name: str, inputs: dict, role: str = "ROOT"):
+    def _run_tool(self, name: str, inputs: dict, role: str = "GUEST"):
         """Execute a tool call and return the result."""
         from core.google_services import brave_search, google_search, analyze_image
         role = self._normalize_role(role)
         try:
             if role != "ROOT" and name in {"query_memory_log", "force_memory_snapshot"}:
-                return f"{name} is not available for GUEST users."
+                return "Memory operations are not available for GUEST users."
             if name == "brave_search":
                 results = brave_search(inputs["query"])
                 if not results:

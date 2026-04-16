@@ -42,8 +42,7 @@ SOLAR8_URL = os.getenv("SOLAR8_URL", "https://web-production-8b53fe.up.railway.a
 
 
 def _normalize_role(raw_role) -> str:
-    role = str(raw_role or "GUEST").strip().upper()
-    return "ROOT" if role == "ROOT" else "GUEST"
+    return Solar8._normalize_role(raw_role)
 
 def boot():
     logger.info("=" * 60)
@@ -414,6 +413,7 @@ def chat():
 def solar8_chat():
     """
     Chat with Sol Calarbone 8 with explicit mode support (Speed/Deep/Auto).
+    Available at /api/solar8/chat and /api/chat/v2 (pure alias, same behavior).
 
     Body:
         {
@@ -471,6 +471,7 @@ def solar8_chat():
 def solar8_debug():
     """
     Debug-enabled chat that streams execution steps as Server-Sent Events.
+    Available at /api/solar8/debug and /api/chat/debug (pure alias, same behavior).
 
     Returns:
         Server-Sent Events stream with debug messages
