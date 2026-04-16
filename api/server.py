@@ -8,6 +8,8 @@ import html as _html
 import io
 import os
 import json
+import base64
+import binascii
 import uuid
 import logging
 import threading
@@ -39,10 +41,67 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC_DIR = os.path.join(ROOT_DIR, "static")
 
 SOLAR8_URL = os.getenv("SOLAR8_URL", "https://web-production-8b53fe.up.railway.app")
+DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+DOC_MIME = "application/msword"
 
 
 def _normalize_role(raw_role) -> str:
     return Solar8._normalize_role(raw_role)
+
+
+def _extract_docx_text(file_name: str, data_base64: str) -> str:
+    try:
+        from docx import Document
+    except ImportError:
+        raise RuntimeError("Word document support is unavailable right now. Please try again later.")
+
+    if not data_base64:
+        raise RuntimeError(f"Uploaded file '{file_name}' is empty.")
+
+    try:
+        raw = base64.b64decode(data_base64, validate=True)
+    except (binascii.Error, ValueError):
+        raise RuntimeError(f"Could not decode '{file_name}'. Please re-upload the .docx file.")
+
+    try:
+        doc = Document(io.BytesIO(raw))
+    except Exception:
+        raise RuntimeError(f"Could not read '{file_name}'. Please upload a valid .docx file.")
+
+    lines = [p.text for p in doc.paragraphs if p.text and p.text.strip()]
+    return "\n".join(lines)
+
+
+def _preprocess_word_uploads(file: dict | None, files: list | None):
+    all_files = files if files else ([file] if file else [])
+    if not all_files:
+        return file, files, None
+
+    processed = []
+    for f in all_files:
+        name = (f.get("name") or "document").strip()
+        lower_name = name.lower()
+        mime = (f.get("mime_type") or "").lower().strip()
+        is_docx = mime == DOCX_MIME or lower_name.endswith(".docx")
+        is_doc = (mime == DOC_MIME or lower_name.endswith(".doc")) and not lower_name.endswith(".docx")
+
+        if is_doc:
+            logger.warning("[SOLAR8] Unsupported legacy .doc upload: %s", name)
+            return None, None, "Legacy .doc files are not supported yet. Please upload a .docx file."
+
+        if is_docx:
+            text = _extract_docx_text(name, f.get("data", ""))
+            converted = dict(f)
+            converted["mime_type"] = "text/plain"
+            converted["is_text"] = True
+            converted["data"] = text
+            processed.append(converted)
+        else:
+            processed.append(f)
+
+    if files:
+        return (processed[0] if processed else None), processed, None
+    return (processed[0] if processed else None), None, None
 
 def boot():
     logger.info("=" * 60)
@@ -388,6 +447,12 @@ def chat():
         logger.info("[SOLAR8] Chat request with %d file(s)", len(files))
         if not file:
             file = files[0]
+    try:
+        file, files, word_error = _preprocess_word_uploads(file, files if files else None)
+    except RuntimeError as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 400
+    if word_error:
+        return jsonify({"status": "error", "message": word_error}), 400
     if not message:
         return jsonify({"status": "error", "message": "message required."}), 400
     try:
@@ -440,6 +505,12 @@ def solar8_chat():
     file = data.get("file") or None
     files = data.get("files", [])
     logger.info("[SOLAR8] File attached: %s, Files attached: %s", file is not None, bool(files))
+    try:
+        file, files, word_error = _preprocess_word_uploads(file, files if files else None)
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 400
+    if word_error:
+        return jsonify({"error": word_error}), 400
     if not message:
         logger.warning("[SOLAR8] Empty message received")
         return jsonify({"error": "No message"}), 400
@@ -485,6 +556,12 @@ def solar8_debug():
     role = _normalize_role(data.get("role", "GUEST"))
     file = data.get("file") or None
     files = data.get("files", [])
+    try:
+        file, files, word_error = _preprocess_word_uploads(file, files if files else None)
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 400
+    if word_error:
+        return jsonify({"error": word_error}), 400
 
     def generate_debug_stream():
         try:
@@ -545,6 +622,12 @@ def chat_stream():
         logger.info("[SOLAR8] Chat request with %d file(s)", len(files))
         if not file:
             file = files[0]
+    try:
+        file, files, word_error = _preprocess_word_uploads(file, files if files else None)
+    except RuntimeError as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 400
+    if word_error:
+        return jsonify({"status": "error", "message": word_error}), 400
     if not message:
         return jsonify({"status": "error", "message": "message required."}), 400
 
