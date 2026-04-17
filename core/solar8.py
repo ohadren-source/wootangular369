@@ -7,10 +7,12 @@ The hive made articulate.
 import os
 import uuid
 import json as _json
+import html
 import logging
 import threading
 import requests
 import anthropic
+from urllib.parse import urlparse
 from typing import Optional
 
 import db.wootangular_banks as banks
@@ -395,6 +397,18 @@ class Solar8:
             }
         },
         {
+            "name": "generate_image",
+            "description": "Generate an image using DALL-E 3. Use this when the user asks you to create, draw, design, illustrate, or generate an image, picture, logo, artwork, or visual.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "prompt": {"type": "string", "description": "Detailed description of the image to generate"},
+                    "size": {"type": "string", "enum": ["1024x1024", "1792x1024", "1024x1792"], "description": "Image dimensions. Default 1024x1024. Use 1792x1024 for landscape, 1024x1792 for portrait."}
+                },
+                "required": ["prompt"]
+            }
+        },
+        {
             "name": "query_memory_log",
             "description": "Query the persistent memory log to check context from previous sessions. Use when context seems to have drifted or user asks 'where are we' or 'what were we doing'.",
             "input_schema": {
@@ -753,6 +767,15 @@ class Solar8:
                 return self._format_search_for_citations(results)
             elif name == "analyze_image":
                 return analyze_image(inputs["image_base64"], inputs.get("mime_type", "image/jpeg"))
+            elif name == "generate_image":
+                from core.image_gen import generate_image
+                result = generate_image(inputs["prompt"], inputs.get("size", "1024x1024"))
+                image_url = str(result.get("url") or "").strip()
+                parsed = urlparse(image_url)
+                if image_url and parsed.scheme in {"http", "https"} and parsed.netloc:
+                    revised = html.escape(str(result.get("revised_prompt") or inputs["prompt"]))
+                    return f"![Generated Image]({image_url})\n\n*Revised prompt: {revised}*"
+                return "Image generation failed. DALL-E may be unavailable."
             elif name == "query_memory_log":
                 limit = inputs.get("limit", 5)
                 entries = memory_log.get_recent_log(limit=limit)

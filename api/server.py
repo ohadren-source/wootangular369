@@ -29,6 +29,7 @@ from core.mcp_server import MCPServer, SERVER_INFO, PROTOCOL_VERSION
 from core.yentah_swarm import YentahSwarm, AXIOM_SET as YENTAH_AXIOM_SET
 from core.optimal_prime import OptimalPrime
 import core.google_services as google_services
+import core.image_gen as image_gen
 import core.pattern_tracker as pattern_tracker
 
 logging.basicConfig(level=logging.INFO)
@@ -121,6 +122,8 @@ def boot():
         logger.warning("remember across sessions. Set TURSO_DATABASE_URL")
         logger.warning("and TURSO_AUTH_TOKEN to enable persistent memory.")
         logger.warning("=" * 60)
+    if not os.getenv("OPENAI_API_KEY", "").strip():
+        logger.warning("OPENAI_API_KEY not set. DALL-E 3 image generation is disabled.")
     logger.info("=" * 60)
     logger.info("WOOTANGULAR369 ONLINE. GI;WG? VENIM.US.")
     logger.info("=" * 60)
@@ -196,6 +199,7 @@ def index():
             "vision":               "POST /api/vision",
             "tts":                  "POST /api/tts",
             "generate_file":        "POST /api/generate-file",
+            "generate_image":       "POST /api/generate-image",
             "agent_card":           "GET  /.well-known/agent.json",
             "agent_card_file":      "GET  /api/agent_card.json",
             "discover":             "POST /api/discover",
@@ -695,6 +699,30 @@ def tts():
     except Exception as e:
         logger.error("tts error: %s", e)
         return jsonify({"status": "error", "message": "TTS failed. Check logs."}), 500
+
+
+@app.route("/api/generate-image", methods=["POST"])
+def generate_image_endpoint():
+    data = request.get_json(silent=True) or {}
+    prompt = data.get("prompt", "").strip()
+    size = data.get("size", "1024x1024")
+    allowed_sizes = {"1024x1024", "1792x1024", "1024x1792"}
+    if not prompt:
+        return jsonify({"status": "error", "message": "prompt required."}), 400
+    if size not in allowed_sizes:
+        return jsonify({"status": "error", "message": "size must be one of 1024x1024, 1792x1024, 1024x1792."}), 400
+    try:
+        result = image_gen.generate_image(prompt, size)
+        if result.get("url"):
+            return jsonify({
+                "status": "ok",
+                "url": result.get("url"),
+                "revised_prompt": result.get("revised_prompt") or prompt,
+            })
+        return jsonify({"status": "error", "message": "Image generation failed. DALL-E may be unavailable."}), 503
+    except Exception as e:
+        logger.error("generate_image error: %s", e)
+        return jsonify({"status": "error", "message": "Image generation failed. Check logs."}), 500
 
 
 def _build_file_bytes(content: str, filename: str, fmt: str) -> tuple[bytes, str]:
