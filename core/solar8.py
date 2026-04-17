@@ -7,10 +7,12 @@ The hive made articulate.
 import os
 import uuid
 import json as _json
+import html
 import logging
 import threading
 import requests
 import anthropic
+from urllib.parse import urlparse
 from typing import Optional
 
 import db.wootangular_banks as banks
@@ -768,9 +770,11 @@ class Solar8:
             elif name == "generate_image":
                 from core.image_gen import generate_image
                 result = generate_image(inputs["prompt"], inputs.get("size", "1024x1024"))
-                if result.get("url"):
-                    revised = result.get("revised_prompt") or inputs["prompt"]
-                    return f"![Generated Image]({result['url']})\n\n*Revised prompt: {revised}*"
+                image_url = str(result.get("url") or "").strip()
+                parsed = urlparse(image_url)
+                if image_url and parsed.scheme in {"http", "https"} and parsed.netloc:
+                    revised = html.escape(str(result.get("revised_prompt") or inputs["prompt"]))
+                    return f"![Generated Image]({image_url})\n\n*Revised prompt: {revised}*"
                 return "Image generation failed. DALL-E may be unavailable."
             elif name == "query_memory_log":
                 limit = inputs.get("limit", 5)

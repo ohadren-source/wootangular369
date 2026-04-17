@@ -702,7 +702,7 @@ def tts():
 
 
 @app.route("/api/generate-image", methods=["POST"])
-def generate_image():
+def generate_image_endpoint():
     data = request.get_json(silent=True) or {}
     prompt = data.get("prompt", "").strip()
     size = data.get("size", "1024x1024")
