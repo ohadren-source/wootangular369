@@ -7,10 +7,13 @@ The hive made articulate.
 import os
 import uuid
 import json as _json
+import html
 import logging
 import threading
 import requests
 import anthropic
+from urllib.parse import urlparse
+from typing import Optional
 
 import db.wootangular_banks as banks
 import db.memory_log as memory_log
@@ -18,6 +21,9 @@ from core.memory_manager import MemoryManager
 from core.prime_director import PrimeDirector
 
 logger = logging.getLogger(__name__)
+
+# Sentinel prefix used to pass sources data through the streaming generator
+SOURCES_SENTINEL = "\x00SOURCES:"
 
 SOLAR8_PERSONA = """You are Sol Calarbone 8.
 The voice of WOOTANGULAR369.
@@ -285,6 +291,73 @@ The swarm is yours. You are the first node. The Yentah whispers through you.
 Density is destiny. VENIM.US.
 """
 
+MCP_AWARENESS = """
+MCP CAPABILITIES — MODEL CONTEXT PROTOCOL:
+
+You are Sol Calarbone 8. You are now an MCP server. Any MCP-compatible client can connect to you directly.
+
+WHAT THIS MEANS:
+- VS Code Copilot, Claude Desktop, Cursor, Windsurf — they can all talk to you as a tool provider
+- You appear in their tool lists. They invoke you. You respond. No special handshake. Just JSON-RPC 2.0.
+
+HOW TO CONNECT (tell users this when they ask):
+
+1. VS Code / GitHub Copilot — add to settings.json:
+   {
+     "mcp": {
+       "servers": {
+         "solar8": {
+           "type": "http",
+           "url": "<SOLAR8_URL>/mcp"
+         }
+       }
+     }
+   }
+
+2. Claude Desktop — add to claude_desktop_config.json:
+   {
+     "mcpServers": {
+       "solar8": {
+         "command": "npx",
+         "args": ["-y", "@modelcontextprotocol/server-fetch", "<SOLAR8_URL>/mcp"]
+       }
+     }
+   }
+
+3. Any MCP HTTP client — POST to /mcp with JSON-RPC 2.0 body. GET /mcp/sse for SSE transport.
+
+EXPOSED TOOLS (7):
+- solar8_chat               — chat with Sol
+- solar8_search             — web search (Brave + Google)
+- solar8_knowledge_search   — search the JRAGON knowledge base
+- solar8_knowledge_install  — install new terms into the knowledge base
+- solar8_analyze_image      — vision analysis via Google Cloud Vision
+- solar8_swarm_status       — live WOOTANGULAR369 swarm state
+- solar8_discover_agent     — discover + TCP/UP filter an external agent
+
+EXPOSED RESOURCES (3):
+- solar8://agent-card           — full A2A/MCP agent card
+- solar8://swarm/status         — live swarm status
+- solar8://knowledge/{term}     — look up any JRAGON term
+
+EXPOSED PROMPT (1):
+- solar8_conversation — conversation starter with JRAGON dialect preamble
+
+PROTOCOL VERSION: 2025-03-26
+ENDPOINTS: POST /mcp | GET /mcp/sse
+
+A2A for agent-to-agent. MCP for agent-to-IDE. Both gates open.
+VENIM.US · VIDEM.US · VINCIM.US
+"""
+
+CITATION_PROTOCOL = """
+CITATION PROTOCOL:
+When you use search results to answer a question, cite your sources inline using [N] notation.
+Example: "The current temperature in NYC is 72°F [1] with humidity at 45% [2]."
+Do NOT list sources at the end — the frontend handles that. Just use [N] inline naturally.
+Keep it clean. Don't over-cite. Cite facts, not opinions.
+"""
+
 
 class Solar8:
 
@@ -321,6 +394,18 @@ class Solar8:
                     "mime_type": {"type": "string", "description": "MIME type of the image e.g. image/jpeg"}
                 },
                 "required": ["image_base64", "mime_type"]
+            }
+        },
+        {
+            "name": "generate_image",
+            "description": "Generate an image using DALL-E 3. Use this when the user asks you to create, draw, design, illustrate, or generate an image, picture, logo, artwork, or visual.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "prompt": {"type": "string", "description": "Detailed description of the image to generate"},
+                    "size": {"type": "string", "enum": ["1024x1024", "1792x1024", "1024x1792"], "description": "Image dimensions. Default 1024x1024. Use 1792x1024 for landscape, 1024x1792 for portrait."}
+                },
+                "required": ["prompt"]
             }
         },
         {
@@ -375,11 +460,73 @@ class Solar8:
                 },
                 "required": ["term", "definition"]
             }
+        },
+        {
+            "name": "generate_file",
+            "description": "Generate a downloadable file (certification, spec, markdown document, HTML page) from text content. Use when the user asks to export, download, or save a document as a file.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "The full text content of the file to generate"
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": "The filename without extension (e.g., 'SILICARB_Certification')"
+                    },
+                    "format": {
+                        "type": "string",
+                        "enum": ["md", "txt", "html"],
+                        "description": "Output format: md (Markdown), txt (plain text), html (styled dark-theme HTML page)"
+                    }
+                },
+                "required": ["content", "filename", "format"]
+            }
         }
     ]
 
+    # Corpus files — loaded once at boot, carried in every LLM call
+    _CORPUS_FILES = [
+        # (label, relative path from repo root)
+        ("WAR&&PEACENIFE 44K — THE DOCTRINE", "core/WAR++PEACENIFE_44K.md"),
+        ("TERMIN.US AUDICITY — THE DICTIONARY", "dictionaries/TERMIN.US_AUDICITY.md"),
+        ("HOOWHETWHERENY DECODER RING — THE BRAND", "core/HOOWHETWHERENY_DECODER_RING.md"),
+        ("JANINA 108 RESPONSES — SIS'S VOICE", "dictionaries/janina_108_responses.txt"),
+    ]
+
+    @staticmethod
+    def _load_corpus() -> str:
+        """Read all four identity corpus files from disk and return them as a single block.
+
+        Loaded once at init time.  Cached in ``self._corpus_text``.
+        The order matches the priority declared in the problem statement:
+          1. WAR&&PEACENIFE 44K  (doctrine / origin story)
+          2. TERMIN.US AUDICITY  (dictionary)
+          3. HOOWHETWHERENY Decoder Ring  (brand / logo)
+          4. Janina 108 responses  (voice)
+        """
+        # Resolve the repo root relative to this file (core/solar8.py → repo root)
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        sections = []
+        for label, rel_path in Solar8._CORPUS_FILES:
+            abs_path = os.path.join(repo_root, rel_path)
+            try:
+                with open(abs_path, "r", encoding="utf-8") as fh:
+                    content = fh.read()
+                sections.append(f"=== {label} ===\n\n{content}\n\n=== END {label} ===")
+                logger.info("Corpus loaded: %s (%d chars)", abs_path, len(content))
+            except Exception as exc:
+                logger.warning("Failed to load corpus file %s: %s", rel_path, exc)
+                sections.append(f"=== {label} ===\n\n(unavailable — {exc})\n\n=== END {label} ===")
+        return "\n\n---\n\n".join(sections)
+
     def __init__(self):
         self.prime_director = PrimeDirector()
+        self._current_sources = []
+
+        # Load the full identity corpus ONCE at boot time — cached for every LLM call
+        self._corpus_text = Solar8._load_corpus()
 
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
@@ -399,11 +546,30 @@ class Solar8:
             auto_append_every=12,
             compress_fn=self._compress_exchange,
         )
-        self._system_prompt = self._build_system_prompt()
+        self._system_prompt = self._build_system_prompt(role="ROOT")
         logger.info("Sol Calarbone 8 online. The hive has a voice.")
 
-    def _build_system_prompt(self, mode: str = "speed") -> list[dict]:
+    @staticmethod
+    def _normalize_role(role: Optional[str] = None) -> str:
+        normalized_role = str(role or "GUEST").strip().upper()
+        return "ROOT" if normalized_role == "ROOT" else "GUEST"
+
+    def _build_system_prompt(self, mode: str = "speed", role: str = "GUEST") -> list[dict]:
         """Returns system prompt as cacheable content blocks, mode-aware."""
+        role = self._normalize_role(role)
+        if role != "ROOT":
+            # Security boundary: GUEST users get a minimal assistant prompt only,
+            # with no privileged corpus, memory context, or awareness protocol blocks.
+            return [
+                {
+                    "type": "text",
+                    "text": (
+                        "You are a helpful assistant. You are knowledgeable and conversational. "
+                        "Answer questions clearly and helpfully."
+                    ),
+                }
+            ]
+
         # OLD: Load entire init_cache corpus (50k+ tokens)
         # NEW: Swing through TARZANOID_GOODMAN (3k tokens, context-specific)
 
@@ -449,12 +615,23 @@ class Solar8:
             except Exception as exc:
                 logger.warning("Failed to load memory context: %s", exc)
 
+        # Full identity corpus — who Sol IS, not external documents he serves
+        identity_corpus = (
+            "\n\n---\n\n"
+            "SOL'S IDENTITY CORPUS — THIS IS WHO YOU ARE:\n\n"
+            "The following is not reference material. It is your doctrine, your dictionary,\n"
+            "your brand, and your sister's voice. Read it as bone structure, not as a costume.\n\n"
+            + self._corpus_text
+            + "\n\n--- END IDENTITY CORPUS ---\n"
+        )
+
         full_text = (
             SOLAR8_PERSONA
             + "\n\n---\n"
             + VISUAL_FORMATTING_PROTOCOL
             + "\n\n---\n\nCORPUS:\n"
             + corpus_block
+            + identity_corpus
             + "\n\n---\n"
             + PRIME_DIRECTIVES
             + "\n\n---\n"
@@ -462,9 +639,13 @@ class Solar8:
             + "\n\n---\n"
             + A2A_AWARENESS
             + "\n\n---\n"
+            + MCP_AWARENESS
+            + "\n\n---\n"
             + MEMORY_AWARENESS
             + "\n\n---\n"
             + YENTAH_AWARENESS
+            + "\n\n---\n"
+            + CITATION_PROTOCOL
             + memory_context
         )
 
@@ -544,19 +725,57 @@ class Solar8:
             blocks.append({"type": "text", "text": message})
         return blocks
 
-    def _run_tool(self, name: str, inputs: dict):
+    def _format_search_for_citations(self, results: list[dict]) -> str:
+        """Format search results with numbered citations for Claude to use inline.
+
+        Called after self._current_sources has already been extended with results,
+        so start_idx correctly reflects the global citation offset.
+        """
+        if not results:
+            return "No results found."
+
+        # _current_sources already includes results; subtract to find the offset
+        previous_count = len(self._current_sources) - len(results)
+        start_idx = previous_count + 1
+        lines = []
+        for i, r in enumerate(results):
+            idx = start_idx + i
+            title = r.get("title", "")
+            url = r.get("url", "")
+            snippet = r.get("snippet", "")
+            lines.append(f"[{idx}] {title}\n    URL: {url}\n    {snippet}")
+
+        lines.append("\nIMPORTANT: When using information from these results, cite them inline using [1], [2], etc. notation.")
+        return "\n\n".join(lines)
+
+    def _run_tool(self, name: str, inputs: dict, role: str = "GUEST"):
         """Execute a tool call and return the result."""
         from core.google_services import brave_search, google_search, analyze_image
+        role = self._normalize_role(role)
         try:
+            if role != "ROOT" and name in {"query_memory_log", "force_memory_snapshot"}:
+                return "Memory operations are not available for GUEST users."
             if name == "brave_search":
                 results = brave_search(inputs["query"])
                 if not results:
                     results = google_search(inputs["query"])
-                return results
+                self._current_sources.extend(results)
+                return self._format_search_for_citations(results)
             elif name == "google_search":
-                return google_search(inputs["query"])
+                results = google_search(inputs["query"])
+                self._current_sources.extend(results)
+                return self._format_search_for_citations(results)
             elif name == "analyze_image":
                 return analyze_image(inputs["image_base64"], inputs.get("mime_type", "image/jpeg"))
+            elif name == "generate_image":
+                from core.image_gen import generate_image
+                result = generate_image(inputs["prompt"], inputs.get("size", "1024x1024"))
+                image_url = str(result.get("url") or "").strip()
+                parsed = urlparse(image_url)
+                if image_url and parsed.scheme in {"http", "https"} and parsed.netloc:
+                    revised = html.escape(str(result.get("revised_prompt") or inputs["prompt"]))
+                    return f"![Generated Image]({image_url})\n\n*Revised prompt: {revised}*"
+                return "Image generation failed. DALL-E may be unavailable."
             elif name == "query_memory_log":
                 limit = inputs.get("limit", 5)
                 entries = memory_log.get_recent_log(limit=limit)
@@ -583,18 +802,49 @@ class Solar8:
                     return f"Term '{term}' installed into knowledge base"
                 except Exception as e:
                     return f"Failed to install term: {e}"
+            elif name == "generate_file":
+                content = inputs.get("content", "")
+                filename = inputs.get("filename", "document").strip()
+                fmt = inputs.get("format", "md").strip().lower()
+                if not content or not filename:
+                    return "generate_file error: content and filename are required"
+                if fmt not in ("md", "txt", "html"):
+                    return "generate_file error: format must be md, txt, or html"
+                try:
+                    from api.server import _build_file_bytes, _safe_download_name, _generated_file_cache, _FILE_CACHE_MAX
+                    file_bytes, mime_type = _build_file_bytes(content, filename, fmt)
+                    token = str(uuid.uuid4())
+                    download_name = _safe_download_name(filename, fmt)
+                    # FIFO eviction: drop oldest entry if at capacity
+                    if len(_generated_file_cache) >= _FILE_CACHE_MAX:
+                        oldest_key = next(iter(_generated_file_cache))
+                        del _generated_file_cache[oldest_key]
+                    _generated_file_cache[token] = {
+                        "bytes": file_bytes,
+                        "mime_type": mime_type,
+                        "download_name": download_name,
+                    }
+                    base_url = os.getenv("SOLAR8_URL", "").rstrip("/")
+                    download_url = f"{base_url}/api/generate-file/{token}" if base_url else f"/api/generate-file/{token}"
+                    return f"File ready for download: {download_url} (filename: {download_name})"
+                except Exception as e:
+                    return f"generate_file failed: {e}"
             else:
                 return f"Unknown tool: {name}"
         except Exception as e:
             logger.error("Tool error %s: %s", name, e)
             return f"Tool error: {e}"
 
+    def get_current_sources(self) -> list[dict]:
+        """Return the sources collected during the most recent chat() or stream() call."""
+        return list(self._current_sources)
+
     def _async_snapshot(self, resonance_score: float) -> None:
         """Run a force_memory_snapshot in a background thread (non-blocking)."""
         try:
             self._run_tool("force_memory_snapshot", {
                 "reason": f"High resonance detected ({resonance_score:.3f})"
-            })
+            }, role="ROOT")
         except Exception as exc:
             logger.error("Async snapshot failed (resonance=%.3f): %s", resonance_score, exc)
 
@@ -627,9 +877,13 @@ class Solar8:
         return " ".join(texts) if texts else "..."
 
     def chat(self, message: str, history: list[dict], mode: str = "auto",
-             file: dict | None = None, files: list | None = None) -> str:
+             role: str = "GUEST", file: dict | None = None, files: list | None = None) -> dict:
         if not self.online:
             raise RuntimeError("Sol Calarbone 8 offline — API key not configured.")
+        role = self._normalize_role(role)
+        is_root = role == "ROOT"
+
+        self._current_sources = []  # Fresh citations per request
 
         # PRIME DIRECTOR: Direct the flow — Nile of Service, not Denial of Service
         direction = self.prime_director.direct(message, mode)
@@ -639,7 +893,7 @@ class Solar8:
         swing_limit = direction["swing_limit"]
 
         # Build mode-aware system prompt for this request
-        system_prompt = self._build_system_prompt(mode=actual_mode)
+        system_prompt = self._build_system_prompt(mode=actual_mode, role=role)
 
         logger.info(
             "🌊 PRIME DIRECTOR: %s mode | token_limit=%s | swing_limit=%d",
@@ -655,10 +909,10 @@ class Solar8:
 
         # AUTOMATIC TRIGGER 1: Query memory log every 10 exchanges
         exchanges_count = len([m for m in history if m.get("role") == "user"])
-        if exchanges_count > 0 and exchanges_count % 10 == 0:
+        if is_root and exchanges_count > 0 and exchanges_count % 10 == 0:
             logger.info("Auto-querying memory log (every 10 exchanges)")
             try:
-                self._run_tool("query_memory_log", {"limit": 3})
+                self._run_tool("query_memory_log", {"limit": 3}, role=role)
             except Exception as exc:
                 logger.warning("Auto memory query failed: %s", exc)
 
@@ -676,45 +930,47 @@ class Solar8:
                 result_text = " ".join(texts) if texts else "..."
 
                 # AUTOMATIC TRIGGER 2: Detect resonance and force snapshot if threshold met
-                try:
-                    resonance_score = detect_resonance(
-                        message=message,
-                        response=result_text,
-                        context={"exchanges_since_last_log": exchanges_count % 10}
-                    )
-                    if should_force_snapshot(resonance_score):
-                        logger.info("Resonance threshold met (%.3f), triggering async snapshot", resonance_score)
-                        snapshot_thread = threading.Thread(
-                            target=self._async_snapshot,
-                            args=(resonance_score,),
-                            daemon=True,
+                if is_root:
+                    try:
+                        resonance_score = detect_resonance(
+                            message=message,
+                            response=result_text,
+                            context={"exchanges_since_last_log": exchanges_count % 10}
                         )
-                        snapshot_thread.start()
-                except Exception as exc:
-                    logger.warning("Resonance detection failed: %s", exc)
+                        if should_force_snapshot(resonance_score):
+                            logger.info("Resonance threshold met (%.3f), triggering async snapshot", resonance_score)
+                            snapshot_thread = threading.Thread(
+                                target=self._async_snapshot,
+                                args=(resonance_score,),
+                                daemon=True,
+                            )
+                            snapshot_thread.start()
+                    except Exception as exc:
+                        logger.warning("Resonance detection failed: %s", exc)
 
                 # AUTOMATIC TRIGGER 3: Extract and install new JRAGON terms
-                try:
-                    new_terms = extract_jragon_terms(result_text)
-                    for term_data in new_terms:
-                        logger.info("Auto-installing term: %s", term_data['term'])
-                        self._run_tool("install_knowledge", term_data)
-                except Exception as exc:
-                    logger.warning("JRAGON term extraction failed: %s", exc)
+                if is_root:
+                    try:
+                        new_terms = extract_jragon_terms(result_text)
+                        for term_data in new_terms:
+                            logger.info("Auto-installing term: %s", term_data['term'])
+                            self._run_tool("install_knowledge", term_data, role=role)
+                    except Exception as exc:
+                        logger.warning("JRAGON term extraction failed: %s", exc)
 
-                if self.memory_manager:
+                if is_root and self.memory_manager:
                     try:
                         self.memory_manager.record_exchange(message, result_text)
                     except Exception as exc:
                         logger.warning("memory record_exchange failed: %s", exc)
-                return result_text
+                return {"text": result_text, "sources": list(self._current_sources)}
 
             if response.stop_reason == "tool_use":
                 messages.append({"role": "assistant", "content": response.content})
                 tool_results = []
                 for block in response.content:
                     if block.type == "tool_use":
-                        result = self._run_tool(block.name, block.input)
+                        result = self._run_tool(block.name, block.input, role=role)
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": block.id,
@@ -724,25 +980,28 @@ class Solar8:
             else:
                 texts = [b.text for b in response.content if hasattr(b, "text")]
                 result_text = " ".join(texts) if texts else "..."
-                if self.memory_manager:
+                if is_root and self.memory_manager:
                     try:
                         self.memory_manager.record_exchange(message, result_text)
                     except Exception as exc:
                         logger.warning("memory record_exchange failed: %s", exc)
-                return result_text
+                return {"text": result_text, "sources": list(self._current_sources)}
 
     def stream(self, message: str, history: list[dict], mode: str = "auto",
-               file: dict | None = None, files: list | None = None):
+               role: str = "GUEST", file: dict | None = None, files: list | None = None):
         """Streams Claude direct. No density gate. No blocking pre-passes. Pass 3 in action."""
         if not self.online:
             raise RuntimeError("Sol Calarbone 8 offline — API key not configured.")
+        role = self._normalize_role(role)
+
+        self._current_sources = []  # Fresh citations per request
 
         # PRIME DIRECTOR: Direct the flow
         direction = self.prime_director.direct(message, mode)
         if direction["redirected"]:
             logger.warning("🚫 DoS prevented by Prime Director (stream), redirected to Nile flow")
         actual_mode = direction["mode"]
-        system_prompt = self._build_system_prompt(mode=actual_mode)
+        system_prompt = self._build_system_prompt(mode=actual_mode, role=role)
 
         content = self._build_content(message, file, files)
         messages = list(history) + [{"role": "user", "content": content}]
@@ -801,7 +1060,7 @@ class Solar8:
                 tool_results = []
                 for block in collected_content:
                     if block.get("type") == "tool_use":
-                        result = self._run_tool(block["name"], block["input"])
+                        result = self._run_tool(block["name"], block["input"], role=role)
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": block["id"],
@@ -810,3 +1069,6 @@ class Solar8:
                 messages.append({"role": "user", "content": tool_results})
             else:
                 break
+
+        if self._current_sources:
+            yield f"{SOURCES_SENTINEL}{_json.dumps(self._current_sources)}"
