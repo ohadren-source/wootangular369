@@ -37,6 +37,12 @@ STATIC_DIR = os.path.join(ROOT_DIR, "static")
 
 SOLAR8_URL = os.getenv("SOLAR8_URL", "https://web-production-8b53fe.up.railway.app")
 
+
+def _resolve_user_role(data: dict | None) -> str:
+    """Map incoming user mode to a safe role value for Solar8."""
+    mode = str((data or {}).get("user_mode", "GUEST")).strip().upper()
+    return "ROOT" if mode == "ROOT" else "GUEST"
+
 def boot():
     logger.info("=" * 60)
     logger.info("WOOTANGULAR369 BOOTING")
@@ -349,6 +355,7 @@ def chat():
     message = data.get("message", "").strip()
     history = data.get("history", [])
     mode = data.get("mode", "auto")
+    user_role = _resolve_user_role(data)
     file = data.get("file") or None
     files = data.get("files", [])
     if files:
@@ -358,7 +365,14 @@ def chat():
     if not message:
         return jsonify({"status": "error", "message": "message required."}), 400
     try:
-        response = solar8.chat(message=message, history=history, mode=mode, file=file, files=files if files else None)
+        response = solar8.chat(
+            message=message,
+            history=history,
+            mode=mode,
+            role=user_role,
+            file=file,
+            files=files if files else None,
+        )
         reply_text = response.get("text", str(response)) if isinstance(response, dict) else str(response)
         threading.Thread(
             target=pattern_tracker.observe,
@@ -398,6 +412,7 @@ def solar8_chat():
     history = data.get("history", [])
     logger.info("[SOLAR8] History length: %d", len(history))
     mode = data.get("mode", "auto")
+    user_role = _resolve_user_role(data)
     logger.info("[SOLAR8] Mode: %s", mode)
     file = data.get("file") or None
     files = data.get("files", [])
@@ -411,6 +426,7 @@ def solar8_chat():
             message=message,
             history=history,
             mode=mode,
+            role=user_role,
             file=file,
             files=files if files else None,
         )
@@ -438,6 +454,7 @@ def solar8_debug():
     message = data.get("message", "").strip()
     history = data.get("history", [])
     _raw_mode = data.get("mode", "auto")
+    user_role = _resolve_user_role(data)
     # Validate mode to a known set before embedding in SSE messages
     mode = _raw_mode if _raw_mode in ("auto", "speed", "deep") else "auto"
     file = data.get("file") or None
@@ -470,6 +487,7 @@ def solar8_debug():
                 message=message,
                 history=history,
                 mode=mode,
+                role=user_role,
                 file=file,
                 files=files if files else None,
             )
@@ -493,6 +511,7 @@ def chat_stream():
     message = data.get("message", "").strip()
     history = data.get("history", [])
     mode = data.get("mode", "auto")
+    user_role = _resolve_user_role(data)
     file = data.get("file") or None
     files = data.get("files", [])
     if files:
@@ -506,7 +525,14 @@ def chat_stream():
 
     def generate():
         try:
-            for chunk in solar8.stream(message=message, history=history, mode=mode, file=file, files=files if files else None):
+            for chunk in solar8.stream(
+                message=message,
+                history=history,
+                mode=mode,
+                role=user_role,
+                file=file,
+                files=files if files else None,
+            ):
                 yield f"data: {chunk}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
@@ -1050,4 +1076,3 @@ def _get_mime_type(filename: str) -> str:
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
