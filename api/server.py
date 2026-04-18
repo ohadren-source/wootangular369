@@ -359,12 +359,13 @@ def chat():
         return jsonify({"status": "error", "message": "message required."}), 400
     try:
         response = solar8.chat(message=message, history=history, mode=mode, file=file, files=files if files else None)
+        reply_text = response.get("text", str(response)) if isinstance(response, dict) else str(response)
         threading.Thread(
             target=pattern_tracker.observe,
-            args=({"message": message, "response": response},),
+            args=({"message": message, "response": reply_text},),
             daemon=True,
         ).start()
-        return jsonify({"status": "ok", "response": response, "agent": "Sol Calarbone 8", "mode": mode})
+        return jsonify({"status": "ok", "response": reply_text, "agent": "Sol Calarbone 8", "mode": mode})
     except Exception as e:
         logger.error("[SOLAR8] Chat crash caught: %s", e)
         return jsonify({
@@ -413,9 +414,10 @@ def solar8_chat():
             file=file,
             files=files if files else None,
         )
-        logger.info("[SOLAR8] Response generated, length: %d", len(response))
+        reply_text = response.get("text", str(response)) if isinstance(response, dict) else str(response)
+        logger.info("[SOLAR8] Response generated, length: %d", len(reply_text))
         logger.info("=== SOLAR8 CHAT REQUEST SUCCESS ===")
-        return jsonify({"response": response, "mode": mode})
+        return jsonify({"response": reply_text, "mode": mode})
     except Exception as exc:
         logger.error("=== SOLAR8 CHAT REQUEST FAILED ===")
         logger.error("[SOLAR8] Exception type: %s", type(exc).__name__)
