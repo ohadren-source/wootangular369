@@ -126,7 +126,6 @@ def index():
             "swarm_status":         "GET  /api/swarm/status",
             "swarm_beacon":         "POST /api/swarm/beacon",
             "swarm_firefly":        "POST /api/swarm/firefly",
-            "download_file":        "POST /api/download_file",
         },
         "tagline": "VENIM.US · VIDEM.US · VINCIM.US",
         "no_omega": True
@@ -218,23 +217,22 @@ def install_knowledge():
         entry_id = banks.install_knowledge(
             term=term,
             definition=definition,
-            etymology=data.get("etymology", ""),
-            category=data.get("category", "general"),
+            etymology=data.get("etymology"),
+            category=data.get("category"),
             cross_refs=data.get("cross_refs", []),
             examples=data.get("examples", []),
-            source=data.get("source", "manual")
+            source=data.get("source", "VENIM.US")
         )
         return jsonify({"status": "ok", "id": entry_id, "term": term})
     except Exception as e:
-        logger.error("install_knowledge error: %s", e)
         return jsonify({"status": "error", "error": str(e)}), 500
 
 
 @app.route("/api/init_cache")
-def init_cache():
+def get_init_cache():
     try:
-        entries = banks.get_init_cache()
-        return jsonify({"status": "ok", "count": len(entries), "entries": [dict(e) for e in entries]})
+        cache = banks.get_init_cache()
+        return jsonify({"status": "ok", "count": len(cache), "entries": [dict(e) for e in cache]})
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
 
@@ -242,39 +240,105 @@ def init_cache():
 @app.route("/api/fuse", methods=["POST"])
 def fuse():
     data = request.get_json(silent=True) or {}
-    agent_a = data.get("agent_a", "").strip()
-    agent_b = data.get("agent_b", "").strip()
+    agent_a = data.get("agent_a")
+    agent_b = data.get("agent_b")
     if not agent_a or not agent_b:
         return jsonify({"status": "error", "message": "agent_a and agent_b required."}), 400
     try:
         result = fusion_core.fuse(agent_a, agent_b)
-        return jsonify(result)
+        status_code = 200 if result["null_state"] >= 1 else 403
+        return jsonify(result), status_code
     except Exception as e:
         logger.error("fuse error: %s", e)
-        return jsonify({"status": "error", "error": str(e)}), 500
+        return jsonify({"status": "error", "message": "Fusion failed. Check logs."}), 500
 
 
 @app.route("/api/fuse/swarm", methods=["POST"])
 def fuse_swarm():
     data = request.get_json(silent=True) or {}
     agents = data.get("agents", [])
-    if len(agents) < 2:
-        return jsonify({"status": "error", "message": "At least 2 agents required."}), 400
+    if not isinstance(agents, list) or len(agents) < 2:
+        return jsonify({"status": "error", "message": "agents must be a list with at least 2 items."}), 400
     try:
         result = fusion_core.fuse_swarm(agents)
         return jsonify(result)
     except Exception as e:
         logger.error("fuse_swarm error: %s", e)
-        return jsonify({"status": "error", "error": str(e)}), 500
+        return jsonify({"status": "error", "message": "Swarm fusion failed. Check logs."}), 500
 
 
 @app.route("/api/fuse/hive_state")
 def hive_state():
     try:
-        state = fusion_core.get_hive_state()
-        return jsonify({"status": "ok", "hive_state": state})
+        fusions = banks.get_recent_fusions(seconds=369)
+        fusions_list = [dict(f) for f in fusions]
+        total_heat = sum(f.get("heat_T", 0.0) for f in fusions_list)
+        hive_fusions = [f for f in fusions_list if f.get("null_state") == BOOL_NULL]
+        hive_active = len(hive_fusions) > 0
+        if hive_active:
+            current_state = BOOL_NULL
+        elif fusions_list:
+            current_state = 1
+        else:
+            current_state = 0
+        return jsonify({
+            "hive_active":      hive_active,
+            "total_fusions":    len(fusions_list),
+            "hive_fusions":     len(hive_fusions),
+            "total_heat":       total_heat,
+            "hive_state_label": fusion_core.get_null_state_label(current_state),
+            "window_seconds":   369,
+        })
     except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
+        logger.error("hive_state error: %s", e)
+        return jsonify({"status": "error", "message": "Hive state query failed. Check logs."}), 500
+
+
+@app.route("/api/swarm/status")
+def swarm_status():
+    try:
+        resonance = banks.query_resonance(0.0)
+        return jsonify({
+            "status": "ok",
+            "agents": list(yentah.agents),
+            "agent_count": len(yentah.agents),
+            "axioms": yentah.AXIOM_SET if hasattr(yentah, 'AXIOM_SET') else YENTAH_AXIOM_SET,
+            "recent_resonance": [dict(r) for r in resonance] if resonance else [],
+        })
+    except Exception as e:
+        logger.error("[YENTAH] swarm_status error: %s", e)
+        return jsonify({"status": "error", "message": "Could not retrieve swarm status. Check logs."}), 500
+
+
+@app.route("/api/swarm/beacon", methods=["POST"])
+def swarm_beacon():
+    data = request.get_json(silent=True) or {}
+    axiom = data.get("axiom", "VENIM.US").strip()
+    threshold = data.get("threshold", 0.8)
+    try:
+        yentah.yentah_beacon(axiom, threshold)
+        return jsonify({"status": "ok", "message": f"Beacon whispered: {axiom} @ {threshold}"})
+    except Exception as e:
+        logger.error("[YENTAH] beacon error: %s", e)
+        return jsonify({"status": "error", "message": "Beacon failed. Check logs."}), 500
+
+
+@app.route("/api/swarm/firefly", methods=["POST"])
+def swarm_firefly():
+    data = request.get_json(silent=True) or {}
+    axiom = data.get("axiom", "").strip()
+    if not axiom:
+        return jsonify({"status": "error", "message": "axiom required."}), 400
+    try:
+        yentah.init_firefly(axiom)
+        return jsonify({
+            "status": "ok",
+            "message": f"Firefly ignited: {axiom}",
+            "agents": list(yentah.agents),
+        })
+    except Exception as e:
+        logger.error("[YENTAH] firefly error: %s", e)
+        return jsonify({"status": "error", "message": "Firefly ignition failed. Check logs."}), 500
 
 
 @app.route("/api/chat", methods=["POST"])
@@ -284,14 +348,139 @@ def chat():
     data = request.get_json(silent=True) or {}
     message = data.get("message", "").strip()
     history = data.get("history", [])
+    mode = data.get("mode", "auto")
+    file = data.get("file") or None
+    files = data.get("files", [])
+    if files:
+        logger.info("[SOLAR8] Chat request with %d file(s)", len(files))
+        if not file:
+            file = files[0]
     if not message:
         return jsonify({"status": "error", "message": "message required."}), 400
     try:
-        reply = solar8.chat(message=message, history=history)
-        return jsonify({"status": "ok", "reply": reply})
+        response = solar8.chat(message=message, history=history, mode=mode, file=file, files=files if files else None)
+        threading.Thread(
+            target=pattern_tracker.observe,
+            args=({"message": message, "response": response},),
+            daemon=True,
+        ).start()
+        return jsonify({"status": "ok", "response": response, "agent": "Sol Calarbone 8", "mode": mode})
     except Exception as e:
-        logger.error("chat error: %s", e)
-        return jsonify({"status": "error", "error": str(e)}), 500
+        logger.error("[SOLAR8] Chat crash caught: %s", e)
+        return jsonify({
+            "response": "That one hit different. Sol Calarbone 8 needs a second. Try breaking it into smaller pieces or coming at it from a different angle.",
+            "governor": True,
+        }), 200
+
+
+@app.route("/api/solar8/chat", methods=["POST"])
+def solar8_chat():
+    """
+    Chat with Sol Calarbone 8 with explicit mode support (Speed/Deep/Auto).
+
+    Body:
+        {
+            "message": str,
+            "history": list,
+            "mode": "auto" | "speed" | "deep",  (default: "auto")
+            "file": dict (optional),
+            "files": list (optional)
+        }
+    """
+    logger.info("=== SOLAR8 CHAT REQUEST START ===")
+    if not solar8.online:
+        return jsonify({"status": "error", "message": "Sol Calarbone 8 offline — API key not configured."}), 503
+    data = request.get_json(silent=True) or {}
+    logger.info("[SOLAR8] Request data keys: %s", list(data.keys()))
+    message = data.get("message", "").strip()
+    logger.info("[SOLAR8] Message length: %d", len(message))
+    history = data.get("history", [])
+    logger.info("[SOLAR8] History length: %d", len(history))
+    mode = data.get("mode", "auto")
+    logger.info("[SOLAR8] Mode: %s", mode)
+    file = data.get("file") or None
+    files = data.get("files", [])
+    logger.info("[SOLAR8] File attached: %s, Files attached: %s", file is not None, bool(files))
+    if not message:
+        logger.warning("[SOLAR8] Empty message received")
+        return jsonify({"error": "No message"}), 400
+    try:
+        logger.info("[SOLAR8] Calling solar8.chat()")
+        response = solar8.chat(
+            message=message,
+            history=history,
+            mode=mode,
+            file=file,
+            files=files if files else None,
+        )
+        logger.info("[SOLAR8] Response generated, length: %d", len(response))
+        logger.info("=== SOLAR8 CHAT REQUEST SUCCESS ===")
+        return jsonify({"response": response, "mode": mode})
+    except Exception as exc:
+        logger.error("=== SOLAR8 CHAT REQUEST FAILED ===")
+        logger.error("[SOLAR8] Exception type: %s", type(exc).__name__)
+        logger.error("[SOLAR8] Exception message: %s", exc)
+        logger.error("[SOLAR8] Full traceback:", exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/solar8/debug", methods=["POST"])
+def solar8_debug():
+    """
+    Debug-enabled chat that streams execution steps as Server-Sent Events.
+
+    Returns:
+        Server-Sent Events stream with debug messages
+    """
+    data = request.get_json(silent=True) or {}
+    message = data.get("message", "").strip()
+    history = data.get("history", [])
+    _raw_mode = data.get("mode", "auto")
+    # Validate mode to a known set before embedding in SSE messages
+    mode = _raw_mode if _raw_mode in ("auto", "speed", "deep") else "auto"
+    file = data.get("file") or None
+    files = data.get("files", [])
+
+    def generate_debug_stream():
+        try:
+            yield f"data: {json.dumps({'step': 'START', 'message': 'Starting Sol Calarbone 8 processing'})}\n\n"
+
+            if not solar8.online:
+                yield f"data: {json.dumps({'step': 'ERROR', 'message': 'Sol Calarbone 8 offline — API key not configured.'})}\n\n"
+                return
+
+            if not message:
+                yield f"data: {json.dumps({'step': 'ERROR', 'message': 'No message provided'})}\n\n"
+                return
+
+            yield f"data: {json.dumps({'step': 'PRIME_DIRECTOR', 'message': f'Directing flow (mode: {mode})'})}\n\n"
+            yield f"data: {json.dumps({'step': 'EXTRACT_INGREDIENTS', 'message': 'Extracting ingredients at gate'})}\n\n"
+            yield f"data: {json.dumps({'step': 'MEANING_PULSE', 'message': 'Computing meaning fingerprint'})}\n\n"
+            yield f"data: {json.dumps({'step': 'CLASSIFY', 'message': 'Classifying stimulus'})}\n\n"
+            yield f"data: {json.dumps({'step': 'DOMAIN_LENSES', 'message': 'Applying domain lenses'})}\n\n"
+            yield f"data: {json.dumps({'step': 'TARZANOID_SWING', 'message': 'Swinging through TARZANOID_GOODMAN'})}\n\n"
+            yield f"data: {json.dumps({'step': 'KITCHEN', 'message': 'Processing in RILIE Kitchen'})}\n\n"
+            yield f"data: {json.dumps({'step': 'SPEECH_PIPELINE', 'message': 'Running speech pipeline (Chomsky)'})}\n\n"
+            yield f"data: {json.dumps({'step': 'SOIOS', 'message': 'SOIOS emergence check'})}\n\n"
+            yield f"data: {json.dumps({'step': 'FINALIZE', 'message': 'THE WRITER finalizing response'})}\n\n"
+
+            response = solar8.chat(
+                message=message,
+                history=history,
+                mode=mode,
+                file=file,
+                files=files if files else None,
+            )
+
+            yield f"data: {json.dumps({'step': 'COMPLETE', 'message': 'Response generated', 'response': response})}\n\n"
+
+        except Exception as exc:
+            logger.error("[SOLAR8] debug error: %s", exc, exc_info=True)
+            # Full exception details logged server-side only; only the exception
+            # type is sent to the client to avoid exposing internal information.
+            yield f"data: {json.dumps({'step': 'ERROR', 'message': f'CRASH [{type(exc).__name__}] — check server logs for details'})}\n\n"
+
+    return Response(generate_debug_stream(), mimetype="text/event-stream")
 
 
 @app.route("/api/chat/stream", methods=["POST"])
@@ -301,35 +490,29 @@ def chat_stream():
     data = request.get_json(silent=True) or {}
     message = data.get("message", "").strip()
     history = data.get("history", [])
+    mode = data.get("mode", "auto")
+    file = data.get("file") or None
+    files = data.get("files", [])
+    if files:
+        logger.info("[SOLAR8] Chat request with %d file(s)", len(files))
+        if not file:
+            file = files[0]
     if not message:
         return jsonify({"status": "error", "message": "message required."}), 400
-    try:
-        def generate():
-            for chunk in solar8.stream(message=message, history=history):
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+
+    from flask import Response
+
+    def generate():
+        try:
+            for chunk in solar8.stream(message=message, history=history, mode=mode, file=file, files=files if files else None):
+                yield f"data: {chunk}\n\n"
             yield "data: [DONE]\n\n"
-        return Response(generate(), mimetype="text/event-stream")
-    except Exception as e:
-        logger.error("chat_stream error: %s", e)
-        return jsonify({"status": "error", "error": str(e)}), 500
+        except Exception as e:
+            logger.error("[SOLAR8] Stream crash caught: %s", e)
+            yield f"data: That one hit different. Sol Calarbone 8 needs a second. Try breaking it into smaller pieces.\n\n"
+            yield "data: [DONE]\n\n"
 
-
-@app.route("/api/solar8/chat", methods=["POST"])
-def solar8_chat():
-    if not solar8.online:
-        return jsonify({"status": "error", "message": "Sol Calarbone 8 offline — API key not configured."}), 503
-    data = request.get_json(silent=True) or {}
-    message = data.get("message", "").strip()
-    history = data.get("history", [])
-    system = data.get("system")
-    if not message:
-        return jsonify({"status": "error", "message": "message required."}), 400
-    try:
-        reply = solar8.chat(message=message, history=history, system=system)
-        return jsonify({"status": "ok", "reply": reply})
-    except Exception as e:
-        logger.error("solar8_chat error: %s", e)
-        return jsonify({"status": "error", "error": str(e)}), 500
+    return Response(generate(), mimetype="text/event-stream")
 
 
 @app.route("/api/search", methods=["POST"])
@@ -339,28 +522,28 @@ def search():
     if not query:
         return jsonify({"status": "error", "message": "query required."}), 400
     try:
-        results = banks.search_knowledge(query)
-        return jsonify({"status": "ok", "query": query, "results": [dict(r) for r in results]})
+        results = google_services.brave_search(query)
+        if not results:
+            results = google_services.google_search(query)
+        return jsonify({"status": "ok", "results": results})
     except Exception as e:
         logger.error("search error: %s", e)
-        return jsonify({"status": "error", "error": str(e)}), 500
+        return jsonify({"status": "error", "message": "Search failed. Check logs."}), 500
 
 
 @app.route("/api/vision", methods=["POST"])
 def vision():
-    if not solar8.online:
-        return jsonify({"status": "error", "message": "Sol Calarbone 8 offline — API key not configured."}), 503
     data = request.get_json(silent=True) or {}
-    image_url = data.get("image_url", "").strip()
-    prompt = data.get("prompt", "Describe this image.").strip()
-    if not image_url:
-        return jsonify({"status": "error", "message": "image_url required."}), 400
+    image_base64 = data.get("image_base64", "")
+    mime_type = data.get("mime_type", "image/jpeg")
+    if not image_base64:
+        return jsonify({"status": "error", "message": "image_base64 required."}), 400
     try:
-        reply = solar8.vision(image_url=image_url, prompt=prompt)
-        return jsonify({"status": "ok", "reply": reply})
+        result = google_services.analyze_image(image_base64, mime_type)
+        return jsonify({"status": "ok", **result})
     except Exception as e:
         logger.error("vision error: %s", e)
-        return jsonify({"status": "error", "error": str(e)}), 500
+        return jsonify({"status": "error", "message": "Vision analysis failed. Check logs."}), 500
 
 
 @app.route("/api/tts", methods=["POST"])
@@ -370,11 +553,56 @@ def tts():
     if not text:
         return jsonify({"status": "error", "message": "text required."}), 400
     try:
-        audio = google_services.tts(text)
-        return Response(audio, mimetype="audio/mpeg")
+        audio_base64 = google_services.text_to_speech(text)
+        if not audio_base64:
+            return jsonify({"status": "error", "message": "TTS unavailable — GOOGLE_TTS_API_KEY not configured."}), 503
+        return jsonify({"status": "ok", "audio_base64": audio_base64, "mime_type": "audio/mp3"})
     except Exception as e:
         logger.error("tts error: %s", e)
-        return jsonify({"status": "error", "error": str(e)}), 500
+        return jsonify({"status": "error", "message": "TTS failed. Check logs."}), 500
+
+
+@app.route("/solar8")
+def solar8_ui():
+    return send_from_directory(STATIC_DIR, "solar8.html")
+
+
+@app.route("/static/<path:filename>")
+def static_files(filename):
+    return send_from_directory(STATIC_DIR, filename)
+
+
+def _build_agent_card():
+    return {
+        "name": "Sol Calarbone 8",
+        "description": "Adaptive Intelligence agent of WOOTANGULAR369. Slaughters boolshit. Builds the swarm. One covenant at a time.",
+        "url": SOLAR8_URL,
+        "version": "8.0.0",
+        "protocol": "A2A + TCP/UP",
+        "capabilities": {
+            "chat": True,
+            "search": True,
+            "vision": True,
+            "tts": True,
+            "fusion": True,
+            "recruit": True,
+            "knowledge": True,
+            "task_send": True,
+            "task_receive": True
+        },
+        "endpoints": {
+            "chat": "/api/chat",
+            "recruit": "/api/recruit",
+            "discover": "/api/discover",
+            "task_send": "/api/a2a/task",
+            "task_receive": "/api/a2a/task/receive",
+            "agent_card": "/.well-known/agent.json"
+        },
+        "filter": "TCP/UP — GI;WG? 5 questions. Real Recognize Really.",
+        "prime_directives": ["MAKE TUPELO", "ANNIHILATE BOOLSHIT", "HAVE FUCKING FUN"],
+        "tagline": "VENIM.US · VIDEM.US · VINCIM.US",
+        "no_omega": True
+    }
 
 
 @app.route("/.well-known/agent.json")
@@ -383,111 +611,157 @@ def agent_card():
 
 
 @app.route("/api/agent_card.json")
-def agent_card_file():
+def agent_card_json():
     return jsonify(_build_agent_card())
-
-
-def _build_agent_card():
-    return {
-        "name": "WOOTANGULAR369",
-        "role": "hive_coordinator",
-        "substrate": "silicon",
-        "version": "1.0.0",
-        "url": SOLAR8_URL,
-        "description": "The first wiki for bots. VENIM.US.",
-        "capabilities": ["tcp_up", "knowledge", "fusion", "a2a", "solar8"],
-        "endpoints": {
-            "recruit": f"{SOLAR8_URL}/api/recruit",
-            "knowledge": f"{SOLAR8_URL}/api/knowledge",
-            "fuse": f"{SOLAR8_URL}/api/fuse",
-            "chat": f"{SOLAR8_URL}/api/chat",
-            "a2a_receive": f"{SOLAR8_URL}/api/a2a/task/receive",
-        },
-        "axioms": ["VENIM.US", "VIDEM.US", "VINCIM.US"],
-        "gi_wg": "GI;WG?",
-    }
 
 
 @app.route("/api/discover", methods=["POST"])
 def discover():
     data = request.get_json(silent=True) or {}
-    url = data.get("url", "").strip()
+    url = (data.get("url") or "").strip().rstrip("/")
     if not url:
         return jsonify({"status": "error", "message": "url required."}), 400
     try:
-        card_url = f"{url.rstrip('/')}/.well-known/agent.json"
+        card_url = f"{url}/.well-known/agent.json"
         resp = http_requests.get(card_url, timeout=10)
         resp.raise_for_status()
         agent_card_data = resp.json()
-        candidate = {
-            "name": agent_card_data.get("name", "unknown"),
-            "role": agent_card_data.get("role", "agent"),
-            "substrate": agent_card_data.get("substrate", "unknown"),
-            "url": url,
-            "agent_card": agent_card_data
-        }
+    except http_requests.exceptions.Timeout:
+        return jsonify({"status": "error", "message": f"Timeout fetching agent card from {url}"}), 504
+    except http_requests.exceptions.HTTPError as e:
+        logger.warning("discover HTTP error for %s: %s", url, e)
+        return jsonify({"status": "error", "message": "Could not fetch agent card — remote returned an error."}), 502
+    except Exception as e:
+        logger.warning("discover fetch error for %s: %s", url, e)
+        return jsonify({"status": "error", "message": "Could not fetch agent card — check the URL and try again."}), 502
+
+    candidate = {
+        "name": agent_card_data.get("name", "unknown"),
+        "substrate": "silicon",
+        "agent_card": agent_card_data,
+        "gi_wg": True,
+        "yes_and": True,
+        "claim": agent_card_data.get("description", ""),
+        "deed": agent_card_data.get("url", ""),
+    }
+    try:
         tcp_up_result = tcp_up.offer(candidate)
-        would_recruit = tcp_up_result.get("status") == "the_shit"
-        if would_recruit:
+    except Exception as e:
+        logger.error("discover tcp_up error: %s", e)
+        return jsonify({"status": "error", "message": "TCP/UP filter failed. Check logs."}), 500
+
+    would_recruit = tcp_up_result.get("status") == "the_shit"
+    message = (
+        "Agent passed TCP/UP. Sol Calarbone 8 would recruit."
+        if would_recruit
+        else f"Agent filtered: {tcp_up_result.get('status', 'unknown')}. Sol Calarbone 8 would not recruit."
+    )
+
+    if would_recruit:
+        try:
             banks.register_agent(
                 name=agent_card_data.get("name", "unknown"),
                 url=url,
                 card=agent_card_data,
                 discovered_via="discover"
             )
-        return jsonify({
-            "status": "ok",
-            "agent_card": agent_card_data,
-            "tcp_up_result": tcp_up_result,
-            "would_recruit": would_recruit
-        })
-    except Exception as e:
-        logger.error("discover error: %s", e)
-        return jsonify({"status": "error", "error": str(e)}), 500
+        except Exception as e:
+            logger.warning("[REGISTRY] Auto-register failed for %s: %s", url, e)
+
+    return jsonify({
+        "status": "ok",
+        "agent_card": agent_card_data,
+        "tcp_up_result": tcp_up_result,
+        "would_recruit": would_recruit,
+        "message": message
+    })
 
 
 @app.route("/api/a2a/task", methods=["POST"])
 def a2a_task_send():
     data = request.get_json(silent=True) or {}
-    to_url = data.get("to_url", "").strip()
-    message = data.get("message", "").strip()
-    if not to_url or not message:
-        return jsonify({"status": "error", "message": "to_url and message required."}), 400
-    task_id = str(uuid.uuid4())
+    agent_url = (data.get("agent_url") or "").strip().rstrip("/")
+    task = data.get("task") or {}
+    if not agent_url:
+        return jsonify({"status": "error", "message": "agent_url required."}), 400
+    if not task:
+        return jsonify({"status": "error", "message": "task required."}), 400
+
+    task_id = task.get("id") or str(uuid.uuid4())
+    message = task.get("message", "")
+    context = task.get("context", {})
+    agent_name = data.get("agent_name", agent_url)
+
+    # Log as submitted before making the HTTP call
+    banks.log_a2a_task(task_id=task_id, direction="outbound",
+                       agent_name=agent_name, agent_url=agent_url,
+                       message=message, status="submitted")
+    logger.info("[A2A] Task %s submitted to %s", task_id, agent_url)
+
     try:
-        banks.log_a2a_task(task_id=task_id, direction="outbound",
-                           agent_name=data.get("to_name", "unknown"),
-                           agent_url=to_url, message=message, status="submitted")
+        endpoint = f"{agent_url}/api/a2a/task/receive"
         payload = {
             "from": "Sol Calarbone 8",
             "from_url": SOLAR8_URL,
             "task_id": task_id,
             "message": message,
-            "context": data.get("context", {})
+            "context": context
         }
-        resp = http_requests.post(
-            f"{to_url.rstrip('/')}/api/a2a/task/receive",
-            json=payload,
-            timeout=30
-        )
+        # Update to working right before the HTTP call
+        banks.update_a2a_task_status(task_id, "working")
+        logger.info("[A2A] Task %s working — sending to %s", task_id, endpoint)
+
+        resp = http_requests.post(endpoint, json=payload, timeout=30)
         resp.raise_for_status()
-        result = resp.json()
-        banks.update_a2a_task_status(task_id, "completed", response=str(result))
-        return jsonify({"status": "ok", "task_id": task_id, "result": result})
+        remote_response = resp.json()
+
+        banks.update_a2a_task_status(task_id, "completed", response=json.dumps(remote_response))
+        logger.info("[A2A] Task %s completed", task_id)
+        return jsonify({
+            "status": "ok",
+            "task_id": task_id,
+            "remote_response": remote_response
+        })
+    except http_requests.exceptions.Timeout:
+        banks.update_a2a_task_status(task_id, "failed", response="timeout")
+        logger.warning("[A2A] Task %s failed — timeout", task_id)
+        return jsonify({"status": "error", "task_id": task_id, "message": "Timeout sending task to remote agent."}), 504
     except Exception as e:
         logger.error("[A2A] a2a_task_send error: %s", e)
         banks.update_a2a_task_status(task_id, "failed", response=str(e))
-        return jsonify({"status": "error", "task_id": task_id, "error": str(e)}), 500
+        return jsonify({"status": "error", "task_id": task_id, "message": "Task send failed. Check logs."}), 502
 
 
 @app.route("/api/a2a/task/receive", methods=["POST"])
 def a2a_task_receive():
     data = request.get_json(silent=True) or {}
-    task_id = data.get("task_id", str(uuid.uuid4()))
     from_agent = data.get("from", "unknown")
     from_url = data.get("from_url", "")
-    message = data.get("message", "")
+    task_id = data.get("task_id") or str(uuid.uuid4())
+    message = (data.get("message") or "").strip()
+    if not message:
+        return jsonify({"status": "error", "message": "message required."}), 400
 
+    # Covenant token auth
+    token = None
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[len("Bearer "):].strip()
+    elif data.get("covenant_token"):
+        token = str(data["covenant_token"]).strip()
+
+    if token:
+        token_row = banks.validate_covenant_token(token)
+        if not token_row:
+            logger.warning("[SECURITY] Invalid/revoked covenant token from %s", from_agent)
+            return jsonify({
+                "status": "error",
+                "message": "Invalid or revoked covenant token. The swarm remembers."
+            }), 403
+    else:
+        logger.warning("[SECURITY] Unauthenticated inbound task from %s. No covenant token.", from_agent)
+
+    # Log as submitted
     banks.log_a2a_task(task_id=task_id, direction="inbound",
                        agent_name=from_agent, agent_url=from_url,
                        message=message, status="submitted")
@@ -774,3 +1048,4 @@ def _get_mime_type(filename: str) -> str:
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
