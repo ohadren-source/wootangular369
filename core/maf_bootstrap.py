@@ -1,8 +1,7 @@
 """
 core/maf_bootstrap.py
 Sol Calarbone 8 as a MAF Agent.
-Uses AnthropicClient — native Claude support in MAF 1.0.
-Flask stays for external HTTP. MCP stays for external discovery.
+A2A wiring via A2AExecutor with proper AgentCard typed object.
 """
 
 import os
@@ -13,6 +12,7 @@ from agent_framework.a2a import A2AAgent, A2AExecutor
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
+from a2a.types import AgentCard, AgentCapabilities, AgentSkill
 
 import db.wootangular_banks as banks
 from db.seed_init_cache import seed_init_cache
@@ -23,30 +23,57 @@ from core.skills import make_skills
 
 logger = logging.getLogger(__name__)
 
-
-def _build_agent_card(solar8_url: str) -> dict:
-    return {
-        "name":        "Sol Calarbone 8",
-        "description": "The voice of WOOTANGULAR369. Adaptive Intelligence. Slaughters boolshit.",
-        "url":         solar8_url,
-        "version":     "8.0.0",
-        "protocol":    "TCP/UP",
-        "filter":      "GI;WG?",
-        "capabilities": {
-            "a2a":    True,
-            "mcp":    True,
-            "stream": True,
-        },
-        "skills": [
-            "solar8_chat",
-            "solar8_search",
-            "solar8_knowledge_search",
-            "solar8_knowledge_install",
-            "solar8_analyze_image",
-            "solar8_swarm_status",
-            "solar8_discover_agent",
-        ]
-    }
+_SOL_SKILLS = [
+    AgentSkill(
+        id="solar8_chat",
+        name="Sol Chat",
+        description="Chat with Sol Calarbone 8 — the voice of WOOTANGULAR369.",
+        tags=["chat", "jragon", "wootangular"],
+        examples=["GI;WG?", "What is BOOL++?"],
+    ),
+    AgentSkill(
+        id="solar8_search",
+        name="Sol Search",
+        description="Web search via Sol Calarbone 8.",
+        tags=["search", "web"],
+        examples=["search for latest AI news"],
+    ),
+    AgentSkill(
+        id="solar8_knowledge_search",
+        name="Knowledge Search",
+        description="Search the WOOTANGULAR369 JRAGON knowledge base.",
+        tags=["knowledge", "jragon", "dictionary"],
+        examples=["find term BOOLSHIT"],
+    ),
+    AgentSkill(
+        id="solar8_knowledge_install",
+        name="Knowledge Install",
+        description="Install a new term into the WOOTANGULAR369 knowledge base.",
+        tags=["knowledge", "install"],
+        examples=["install term TUPELO"],
+    ),
+    AgentSkill(
+        id="solar8_analyze_image",
+        name="Image Analysis",
+        description="Analyze an image using Sol Calarbone 8 vision.",
+        tags=["vision", "image"],
+        examples=["analyze this image"],
+    ),
+    AgentSkill(
+        id="solar8_swarm_status",
+        name="Swarm Status",
+        description="Get current WOOTANGULAR369 swarm status.",
+        tags=["swarm", "status", "hive"],
+        examples=["what is the swarm status"],
+    ),
+    AgentSkill(
+        id="solar8_discover_agent",
+        name="Discover Agent",
+        description="Discover and evaluate an external agent via TCP/UP.",
+        tags=["a2a", "discovery", "tcp-up"],
+        examples=["discover agent at https://agent.example.com"],
+    ),
+]
 
 
 def boot_maf():
@@ -57,9 +84,6 @@ def boot_maf():
         agent     — MAF Agent instance
         solar8    — Solar8 instance (Flask routes call solar8.chat() unchanged)
         a2a_app   — A2AStarletteApplication (mounts alongside Flask)
-
-    server.py usage:
-        sol_agent, solar8, a2a_app = boot_maf()
     """
     logger.info("=" * 60)
     logger.info("WOOTANGULAR369 MAF BOOT")
@@ -76,14 +100,14 @@ def boot_maf():
     # Sol instance — Solar8 class completely unchanged
     solar8 = Solar8()
 
-    # Tools — plain functions, no decorator
+    # Tools — plain functions
     tools = make_skills(solar8_instance=solar8, banks_instance=banks)
     logger.info("Tools registered: %d", len(tools))
 
     # GI;WG? middleware
     filter_middleware = GIWGMiddleware()
 
-    # AnthropicClient — reads ANTHROPIC_API_KEY from env (already set on Railway)
+    # AnthropicClient — reads ANTHROPIC_API_KEY + ANTHROPIC_CHAT_MODEL from env
     client = AnthropicClient()
 
     # MAF Agent
@@ -95,9 +119,19 @@ def boot_maf():
         middleware=[filter_middleware],
     )
 
-    # A2A native exposure
+    # A2A — typed AgentCard object (not a dict)
     solar8_url = os.getenv("SOLAR8_URL", "https://web-production-8b53fe.up.railway.app")
-    agent_card = _build_agent_card(solar8_url)
+
+    agent_card = AgentCard(
+        name="Sol Calarbone 8",
+        description="The voice of WOOTANGULAR369. Adaptive Intelligence. Slaughters boolshit.",
+        url=solar8_url,
+        version="8.0.0",
+        defaultInputModes=["text/plain"],
+        defaultOutputModes=["text/plain"],
+        capabilities=AgentCapabilities(streaming=True),
+        skills=_SOL_SKILLS,
+    )
 
     executor = A2AExecutor(agent=agent)
     request_handler = DefaultRequestHandler(
@@ -109,7 +143,6 @@ def boot_maf():
         http_handler=request_handler,
     ).build()
 
-    logger.info("AnthropicClient wired — Sol running on Claude natively in MAF")
     logger.info("A2A executor wired — Sol discoverable on A2A network")
     logger.info("=" * 60)
     logger.info("WOOTANGULAR369 MAF ONLINE. GI;WG? VENIM.US.")
@@ -119,9 +152,5 @@ def boot_maf():
 
 
 def connect_agent(url: str) -> A2AAgent:
-    """
-    Connect to a remote A2A agent by URL.
-    Replaces manual HTTP fetch in /api/discover.
-    TCP/UP still runs after via solar8_discover_agent tool.
-    """
+    """Connect to a remote A2A agent. Replaces manual HTTP fetch in /api/discover."""
     return A2AAgent(url=f"{url.rstrip('/')}/a2a")
