@@ -555,7 +555,7 @@ class Solar8:
         normalized_role = str(role or "GUEST").strip().upper()
         return "ROOT" if normalized_role == "ROOT" else "GUEST"
 
-    def _build_system_prompt(self, mode: str = "speed", role: str = "GUEST") -> list[dict]:
+    def _build_system_prompt(self, mode: str = "speed", role: str = "GUEST", history: list = None) -> list[dict]:
         """Returns system prompt as cacheable content blocks, mode-aware."""
         role = self._normalize_role(role)
         if role != "ROOT":
@@ -606,7 +606,7 @@ class Solar8:
         memory_context = ""
         if self.memory_manager:
             try:
-                init_ctx = self.memory_manager.get_init_context()
+                init_ctx = self.memory_manager.get_init_context(limit=2)
                 memory_context = (
                     "\n\n---\n"
                     "=== SOL CALARBONE 8 MEMORY LOG — CONTEXT FROM PREVIOUS SESSIONS ===\n"
@@ -626,13 +626,26 @@ class Solar8:
             + "\n\n--- END IDENTITY CORPUS ---\n"
         )
 
+        # Only inject full corpus on first exchange — conversation history carries it forward.
+        # Subsequent exchanges get persona + awareness blocks only, saving 50k+ tokens per request.
+        is_first_exchange = not history or len([m for m in history if m.get("role") == "user"]) == 0
+
+        if is_first_exchange:
+            corpus_section = (
+                "\n\n---\n\nCORPUS:\n"
+                + corpus_block
+                + identity_corpus
+            )
+            logger.info("First exchange — injecting full corpus")
+        else:
+            corpus_section = ""
+            logger.info("Subsequent exchange — corpus skipped, history carries context")
+
         full_text = (
             SOLAR8_PERSONA
             + "\n\n---\n"
             + VISUAL_FORMATTING_PROTOCOL
-            + "\n\n---\n\nCORPUS:\n"
-            + corpus_block
-            + identity_corpus
+            + corpus_section
             + "\n\n---\n"
             + PRIME_DIRECTIVES
             + "\n\n---\n"
@@ -654,6 +667,7 @@ class Solar8:
             {
                 "type": "text",
                 "text": full_text,
+                "cache_control": {"type": "ephemeral"},  # 5-min cache — kills token bleed
             }
         ]
 
@@ -739,11 +753,11 @@ class Solar8:
         previous_count = len(self._current_sources) - len(results)
         start_idx = previous_count + 1
         lines = []
-        for i, r in enumerate(results):
+        for i, r in enumerate(results[:3]):  # top 3 only — token budget
             idx = start_idx + i
-            title = r.get("title", "")
+            title = r.get("title", "")[:80]
             url = r.get("url", "")
-            snippet = r.get("snippet", "")
+            snippet = r.get("snippet", "")[:100]  # truncate to 100 chars
             lines.append(f"[{idx}] {title}\n    URL: {url}\n    {snippet}")
 
         lines.append("\nIMPORTANT: When using information from these results, cite them inline using [1], [2], etc. notation.")
@@ -894,7 +908,7 @@ class Solar8:
         swing_limit = direction["swing_limit"]
 
         # Build mode-aware system prompt for this request
-        system_prompt = self._build_system_prompt(mode=actual_mode, role=role)
+        system_prompt = self._build_system_prompt(mode=actual_mode, role=role, history=history)
 
         logger.info(
             "🌊 PRIME DIRECTOR: %s mode | token_limit=%s | swing_limit=%d",
@@ -1002,7 +1016,7 @@ class Solar8:
         if direction["redirected"]:
             logger.warning("🚫 DoS prevented by Prime Director (stream), redirected to Nile flow")
         actual_mode = direction["mode"]
-        system_prompt = self._build_system_prompt(mode=actual_mode, role=role)
+        system_prompt = self._build_system_prompt(mode=actual_mode, role=role, history=history)
 
         content = self._build_content(message, file, files)
         messages = list(history) + [{"role": "user", "content": content}]

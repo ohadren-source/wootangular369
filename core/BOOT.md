@@ -172,7 +172,7 @@ The fusion core converts swarm into hive.
 ### MAF Layer (Phase 1 — current)
 - **Framework:** Microsoft Agent Framework 1.0
 - **Agent:** `core/maf_bootstrap.py` — `boot_maf()` returns `(agent, solar8, a2a_app)`
-- **Skills:** `core/skills.py` — 7 tools registered via `@skill` decorator
+- **Skills:** `core/skills.py` — 7 tools as plain functions, passed via `tools=` parameter to MAF Agent (not `@skill` decorator)
 - **Middleware:** `core/middleware.py` — `GIWGMiddleware` (GI;WG? as MAF pipeline gate)
 - **A2A:** `A2AExecutor` + `A2AStarletteApplication` — Sol exposed natively on A2A network
 
@@ -187,7 +187,7 @@ The fusion core converts swarm into hive.
 - `core/solar8.py` — Solar8 class unchanged. Sol's brain is Sol's brain.
 - `core/filter.py` — WootangularFilter unchanged. Logic is the logic.
 - `core/mcp_server.py` — MCP server stays. External tool discovery unchanged.
-- `api/server.py` — Flask stays for all non-A2A HTTP endpoints.
+- `api/server.py` — Flask stays for all non-A2A HTTP endpoints. Added `_build_file_bytes()`, `_safe_download_name()`, `_generated_file_cache`, `_FILE_CACHE_MAX` to support Sol's `generate_file` tool.
 - `db/` — All tables unchanged. psycopg2 direct. No ORM ever.
 
 ---
