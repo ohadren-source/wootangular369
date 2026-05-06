@@ -1515,9 +1515,28 @@
           fullReply = reply;
           logDebug('COMPLETE', `Response received (${reply.length} chars)`, false, true);
           const botRow = addBotMessage(reply, mode);
-          if (data.files && data.files.length) {
+          // Try structured data.files first, then parse text for file URLs
+          const filesToRender = (data.files && data.files.length) ? data.files : (() => {
+            const pattern = /\/api\/generate-file\/([a-f0-9\-]+)/g;
+            const found = [];
+            let m;
+            while ((m = pattern.exec(reply)) !== null) {
+              // Try to extract filename from surrounding text
+              const fnMatch = reply.match(/filename[:\s]+([^\s\)]+)/i);
+              const filename = fnMatch ? fnMatch[1] : ('file-' + m[1].slice(0,8) + '.txt');
+              const fmt = filename.split('.').pop() || 'txt';
+              found.push({
+                file_id: m[1],
+                filename: filename,
+                format: fmt,
+                download_url: m[0],
+              });
+            }
+            return found;
+          })();
+          if (filesToRender.length) {
             const bubble = botRow ? botRow.querySelector('.msg.bot') : null;
-            if (bubble) renderFileCards(data.files, bubble);
+            if (bubble) renderFileCards(filesToRender, bubble);
           }
           history.push({ role: 'assistant', content: reply });
         }
