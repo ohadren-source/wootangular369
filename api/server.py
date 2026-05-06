@@ -1045,6 +1045,25 @@ def download_file():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/generate-file/<token>")
+def serve_generated_file(token):
+    """Serve a cached generated file by token."""
+    try:
+        file_data = _generated_file_cache.get(token)
+        if not file_data:
+            return jsonify({"error": "File token expired or invalid"}), 404
+        buffer = BytesIO(file_data["bytes"])
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=file_data["download_name"],
+            mimetype=file_data["mime_type"]
+        )
+    except Exception as e:
+        logger.error("serve_generated_file error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
 def _get_mime_type(filename: str) -> str:
     """
     Get MIME type from filename extension.
