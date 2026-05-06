@@ -606,7 +606,7 @@ class Solar8:
         memory_context = ""
         if self.memory_manager:
             try:
-                init_ctx = self.memory_manager.get_init_context(limit=2)
+                init_ctx = self.memory_manager.get_init_context()
                 memory_context = (
                     "\n\n---\n"
                     "=== SOL CALARBONE 8 MEMORY LOG — CONTEXT FROM PREVIOUS SESSIONS ===\n"

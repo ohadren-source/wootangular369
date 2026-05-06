@@ -184,5 +184,5 @@ class MemoryManager:
 
     def get_init_context(self) -> str:
         """Return formatted recent memory log for injection at session init."""
-        entries = memory_log.get_recent_log(limit=5)
+        entries = memory_log.get_recent_log(limit=2)  # 2 entries — token budget
         return memory_log.format_log_for_context(entries)
