@@ -368,4 +368,67 @@ import { LilypodClient, useFuse, useHiveState, HiveStatus } from 'lilypod-rn';
 
 ---
 
+
+---
+
+## TOKEN OPTIMIZATION — May 6, 2026
+
+**Problem:** 124:1 input-to-output ratio (418k input tokens in one hour for solo user).
+
+**Fixes shipped:**
+
+- **Corpus gating** (`core/solar8.py`) — full identity corpus injected on first exchange only. Subsequent exchanges in same session skip corpus injection — conversation history carries context forward. Saves ~50k tokens per request after exchange 1.
+- **Prompt caching** (`core/solar8.py`) — `cache_control: {"type": "ephemeral"}` added to system prompt content block. Repeated requests within 5-minute window read from cache at ~10% of full input cost.
+- **Memory log limit** (`core/memory_manager.py`) — `get_recent_log(limit=5)` → `limit=2`. Memory context injection cut in half.
+- **Search result truncation** (`core/solar8.py`) — top 3 results only (was all results), snippets truncated to 100 chars, titles to 80 chars.
+
+**Expected outcome:** Per-session token cost reduced 60-70% for normal solo usage patterns.
+
+---
+
+## FILE GENERATION FIX — May 6, 2026
+
+**Problem:** Sol's `generate_file` tool was silently failing with `ImportError` on every call — four functions referenced in `core/solar8.py` did not exist in `api/server.py`.
+
+**Fix** (`api/server.py`): Added the four missing functions:
+- `_generated_file_cache` — in-memory cache dict (token → file bytes)
+- `_FILE_CACHE_MAX` — max 100 concurrent cached files
+- `_build_file_bytes(content, filename, fmt)` — builds bytes + mime_type for md/txt/html
+- `_safe_download_name(filename, fmt)` — sanitizes filename with correct extension
+
+Sol can now generate and serve downloadable files correctly.
+
+---
+
+## MAF PHASES 2 + 3 — May 6, 2026
+
+**Phase 2 — YENTAH Swarm → MAF Workflow Graph** (`core/workflows.py`)
+- `YentahSwarm.orchestrate()` + `while True: time.sleep(369)` replaced by MAF `@workflow` + `@task` graph
+- Firefly ignition runs concurrently via `asyncio.gather()`
+- Health check runs as async scheduled task every 369 seconds
+- `fusion_core.py`, `filter.py`, `blades.py` — completely untouched
+
+**Phase 3 — Developer Experience** 
+- `core/agents.yaml` — Sol declared as YAML for versioning and fast iteration
+- `lilypod/maf.py` — LILYPOD public API (`fuse()`, `fuse_swarm()`, `run_filter()`, `offer()`, `start_swarm()`) now wraps MAF engine. Public interface unchanged.
+- `docs/MIGRATION_GUIDE.md` — full AutoGen → MAF migration documented
+
+**Model:** Switched to `claude-haiku-4-5-20251001` (set via `ANTHROPIC_CHAT_MODEL` env var on Railway).
+
+---
+
+## BOOT.MD AUTO-LOAD — May 6, 2026
+
+`BOOT.md` added to `core/solar8.py` `_CORPUS_FILES` list. Sol loads it automatically at init — no manual feed required on every session.
+
+```python
+("BOOT.md — IDENTITY, STACK, PROTOCOL", "core/BOOT.md"),
+```
+
+---
+
+## CURRENT LIVE URL
+
+**Sol Calarbone 8:** https://calarb8.isoccpp.org/solar8
+
 *VENIM.US · VIDEM.US · VINCIM.US* 🐉👑🔥

@@ -1074,6 +1074,56 @@ def _get_mime_type(filename: str) -> str:
     return mime_types.get(ext, 'text/plain')
 
 
-if __name__ == "__main__":
+# ============================================================================
+# FILE GENERATION SUPPORT — Used by Solar8.generate_file tool
+# ============================================================================
+
+_generated_file_cache = {}
+_FILE_CACHE_MAX = 100
+
+
+def _build_file_bytes(content: str, filename: str, fmt: str):
+    import html as _html
+    if fmt == 'html':
+        wrapped = (
+            '<!DOCTYPE html>
+<html>
+<head>
+'
+            '    <meta charset="UTF-8">
+'
+            f'    <title>{filename}</title>
+'
+            '    <style>
+'
+            '        body { background: #1a1a1a; color: #e0e0e0; font-family: monospace; padding: 20px; }
+'
+            '        pre { background: #0a0a0a; padding: 15px; border-radius: 5px; }
+'
+            '        h1, h2, h3 { color: #ff6b6b; }
+'
+            '    </style>
+</head>
+<body>
+'
+            f'    <pre>{_html.escape(content)}</pre>
+'
+            '</body>
+</html>'
+        )
+        return wrapped.encode('utf-8'), 'text/html'
+    elif fmt == 'md':
+        return content.encode('utf-8'), 'text/markdown'
+    else:
+        return content.encode('utf-8'), 'text/plain'
+
+
+def _safe_download_name(filename: str, fmt: str) -> str:
+    safe = ''.join(c if c.isalnum() or c in '_-' else '_' for c in filename)
+    ext = {'md': 'md', 'txt': 'txt', 'html': 'html'}.get(fmt, 'txt')
+    return f'{safe}.{ext}'
+
+
+if __name__ == '__main__':
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
