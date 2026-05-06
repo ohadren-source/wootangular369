@@ -84,9 +84,7 @@ def boot_maf():
     filter_middleware = GIWGMiddleware()
 
     # AnthropicClient — reads ANTHROPIC_API_KEY from env (already set on Railway)
-    client = AnthropicClient(
-        model_id=os.getenv("ANTHROPIC_CHAT_MODEL", "claude-sonnet-4-5"),
-    )
+    client = AnthropicClient()
 
     # MAF Agent
     agent = Agent(
