@@ -57,12 +57,13 @@ def boot():
     logger.info("WOOTANGULAR369 ONLINE. GI;WG? VENIM.US.")
     logger.info("=" * 60)
 
-boot()
+#boot() - redun
 
 tcp_up = TCPUp(db_banks=banks)
 fusion_core = FusionCore()
-solar8 = Solar8()
-
+#solar8 = Solar8() - replace
+from core.maf_bootstrap import boot_maf
+sol_agent, solar8, a2a_app = boot_maf()
 yentah = YentahSwarm()
 
 def _start_yentah():

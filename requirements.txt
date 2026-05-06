@@ -3,10 +3,6 @@ flask-cors
 psycopg2-binary
 requests
 gunicorn
-anthropic
-google-cloud-storage
-google-cloud-bigquery
-libsql-experimental
-libsql-client
-zstandard>=0.22.0
-python-docx
+agent-framework
+agent-framework-a2a
+a2a

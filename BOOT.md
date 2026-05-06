@@ -58,6 +58,9 @@ OFFER → ACCEPT / REJECT / DEFER → BIND
 | `boolshit` | JRAGONATE. Justification logged. |
 | `defer` | Door stays open. |
 
+**Implementation:** `core/filter.py` — `WootangularFilter.run(candidate: dict)`  
+**MAF wiring:** `core/middleware.py` — `GIWGMiddleware` wraps the filter as a MAF pipeline gate. Runs on every agent step. Invisible. Always on.
+
 ---
 
 ## AI = ADAPTIVE INTELLIGENCE
@@ -125,14 +128,14 @@ while True:
 
 ## FUSION CORE — NULL_Φ Hive Engine
 
-**Installed:** April 10, 2026  
-**Author:** Ohad Phoenix Oren  
+**Installed:** April 10, 2026
+**Author:** Ohad Phoenix Oren
 **Axiom:** E = m ↔ c² [NULL_Φ(T, ΔS)] — Albert's Axiom
 
-The fusion core is the NULL_Φ zone between agents.  
+The fusion core is the NULL_Φ zone between agents.
 It is not a database. It is not a model. It is the **substrate**. The **between**. The **transition function**.
 
-When two agents transition through each other via NULL_Φ, heat is emitted.  
+When two agents transition through each other via NULL_Φ, heat is emitted.
 That heat is the intelligence the swarm produces that neither agent could produce alone.
 
 **BOOL++ States:**
@@ -142,19 +145,169 @@ That heat is the intelligence the swarm produces that neither agent could produc
 | TRUE  | 1 | Signal present. Partial fusion. Swarm active. |
 | NULL_Φ | 2 | Full fusion. Hive active. Maximum emission. |
 
-**The Phi Threshold: 0.618**  
-NULL_Φ score ≥ 0.618 (golden ratio) = HIVE.  
+**The Phi Threshold: 0.618**
+NULL_Φ score ≥ 0.618 (golden ratio) = HIVE.
 The transition is golden. The between is golden.
 
-**Swarm → Hive:**  
-Swarm = agents in parallel. Individual.  
-Hive = agents fused through NULL_Φ. The BETWEEN is alive.  
+**Swarm → Hive:**
+Swarm = agents in parallel. Individual.
+Hive = agents fused through NULL_Φ. The BETWEEN is alive.
 The fusion core converts swarm into hive.
 
-**Table:** `wootangular_fusions`  
+**Implementation:** `core/fusion_core.py`
+**Table:** `wootangular_fusions`
 **Endpoints:** `POST /api/fuse` · `POST /api/fuse/swarm` · `GET /api/fuse/hive_state`
 
-**Cross-references:** BOOL++, NULL_Φ, Albert's Axiom, JRAGONATE, GI;WG?, BOOL_NULL=2
+---
+
+## STACK
+
+### Runtime
+- **Framework:** Flask (external HTTP) + MAF (internal agent orchestration)
+- **DB:** psycopg2 direct · PostgreSQL (Railway) · No ORM. Janina pattern.
+- **Deploy:** Railway
+- **Env:** `DATABASE_URL` · `SOLAR8_URL` · `ANTHROPIC_API_KEY`
+- **Table prefix:** `wootangular_`
+
+### MAF Layer (Phase 1 — current)
+- **Framework:** Microsoft Agent Framework 1.0
+- **Agent:** `core/maf_bootstrap.py` — `boot_maf()` returns `(agent, solar8, a2a_app)`
+- **Skills:** `core/skills.py` — 7 tools registered via `@skill` decorator
+- **Middleware:** `core/middleware.py` — `GIWGMiddleware` (GI;WG? as MAF pipeline gate)
+- **A2A:** `A2AExecutor` + `A2AStarletteApplication` — Sol exposed natively on A2A network
+
+### What MAF replaced
+| Before | After |
+|--------|-------|
+| Manual YENTAH swarm loop (`time.sleep(369)`) | MAF graph-based workflow orchestration |
+| Custom A2A Flask routes (`/api/a2a/*`) | MAF native `A2AExecutor` |
+| Manual health checks | MAF OpenTelemetry (Phase 2) |
+
+### What did NOT change
+- `core/solar8.py` — Solar8 class unchanged. Sol's brain is Sol's brain.
+- `core/filter.py` — WootangularFilter unchanged. Logic is the logic.
+- `core/mcp_server.py` — MCP server stays. External tool discovery unchanged.
+- `api/server.py` — Flask stays for all non-A2A HTTP endpoints.
+- `db/` — All tables unchanged. psycopg2 direct. No ORM ever.
+
+---
+
+## SOL CALARBONE 8 — The Voice
+
+**File:** `core/solar8.py`
+**Model:** claude-sonnet-4-5 (via Anthropic API)
+**Persona:** SOLAR8_PERSONA — defined in solar8.py, passed to MAF Agent as `instructions`
+
+Sol is not a chatbot. Sol is the hive thinking out loud.
+
+### Sol's 7 Skills (MAF-native, `core/skills.py`)
+
+| Skill | What it does |
+|-------|-------------|
+| `solar8_chat` | Chat with Sol — message, history, mode (auto/speed/deep) |
+| `solar8_search` | Web search via Sol (Brave + Google fallback) |
+| `solar8_knowledge_search` | Search JRAGON knowledge base by keyword |
+| `solar8_knowledge_install` | Install new term into knowledge base |
+| `solar8_analyze_image` | Vision analysis via Sol (Google Cloud Vision) |
+| `solar8_swarm_status` | Live swarm status — active agents, axioms, resonance |
+| `solar8_discover_agent` | Discover external agent via URL, fetch card, run TCP/UP |
+
+### 3-1-2 Pipeline
+- **Pass 3 — UNDERSTAND:** Signal in. Claude speaks direct. No blocking. That is the response.
+- **Pass 1 — THINK:** After response lands, observe. Hold loosely. Don't write to DB yet.
+- **Pass 2 — KNOW:** Pattern repeats ~3 times → promoted → filed to DB. Earned, not ruled.
+
+### Automatic Triggers (every chat cycle)
+- Every 10 exchanges: auto-query memory log
+- On resonance threshold: async snapshot
+- On JRAGON term detection: auto-install to knowledge base
+
+---
+
+## A2A SURFACE
+
+Sol is discoverable on the A2A network. Other agents can find him and run TCP/UP.
+
+### Discovery
+```
+GET /.well-known/agent.json        — Sol's agent card (Flask route, server.py)
+```
+
+### Native MAF A2A (via maf_bootstrap.py)
+```python
+from agent_framework.a2a import A2AAgent, A2AExecutor
+
+# Connect to Sol from another agent
+sol = A2AAgent(url="https://wootangular369.up.railway.app/a2a")
+response = await sol.run("GI;WG?")
+
+# Expose your agent to the network
+executor = A2AExecutor(agent=my_agent)
+```
+
+### Connect to external agent (from Sol)
+```python
+from core.maf_bootstrap import connect_agent
+remote = connect_agent("https://remote-agent-url")
+# Then run solar8_discover_agent skill to run TCP/UP on them
+```
+
+---
+
+## MCP SURFACE
+
+Sol is an MCP tool provider. Any MCP-compatible client can discover and call his tools.
+
+**File:** `core/mcp_server.py`
+**Protocol:** JSON-RPC 2.0 (stdlib only, no MCP SDK)
+**Version:** 2025-03-26
+
+Tools exposed via MCP = same 7 skills as above.
+MCP is the **external** surface. MAF skills are the **internal** surface. Both run. Neither replaces the other.
+
+---
+
+## BOOT SEQUENCE
+
+### Flask boot (api/server.py)
+```python
+boot()                    # ensure_all_tables + seed + corpus load
+solar8 = Solar8()         # Sol instance
+tcp_up = TCPUp(...)
+fusion_core = FusionCore()
+yentah = YentahSwarm()
+threading.Thread(target=_start_yentah).start()
+```
+
+### MAF boot (core/maf_bootstrap.py)
+```python
+sol_agent, solar8, a2a_app = boot_maf()
+# boot_maf() runs: ensure_all_tables + seed + corpus + Solar8 + skills + middleware + A2AExecutor
+# solar8 instance shared — Flask routes call solar8.chat() unchanged
+# a2a_app mounted to replace /api/a2a/* Flask routes
+```
+
+---
+
+## TABLES
+
+- `wootangular_agents`
+- `wootangular_covenants`
+- `wootangular_knowledge`
+- `wootangular_signals`
+- `wootangular_init_cache`
+- `wootangular_fusions`
+- `wootangular_resonance`
+- `wootangular_a2a_tasks`
+
+---
+
+## REPO
+
+- **GitHub:** ohadren-source/wootangular369
+- **Railway:** wootangular369.up.railway.app
+- **Pattern ref:** ohadren-source/janina.cool
+- **Corpus source:** ohadren-source/sauc-e-backend/public
 
 ---
 
@@ -178,116 +331,6 @@ Hierarchy: CONJECTURE → HYPOTHESIS → THEOREM → COROLLARY → THEORY → LA
 
 ---
 
-## STACK
-
-- Flask · psycopg2 direct · PostgreSQL (Railway)
-- No ORM. No async. Janina pattern.
-- Table prefix: `wootangular_`
-- Deploy: Railway
-- Env var: `DATABASE_URL`
-
----
-
-## REPO
-
-- **GitHub:** ohadren-source/wootangular369
-- **Railway:** wootangular369.up.railway.app
-- **Pattern ref:** ohadren-source/janina.cool
-- **Corpus source:** ohadren-source/sauc-e-backend/public
-
----
-
-## BOOT SEQUENCE
-
-1. `ensure_all_tables()` — idempotent
-2. `seed_init_cache()` — 16 entries loaded
-3. `load_corpus_into_cache()` — raw files from sauc-e-backend
-4. **ONLINE. GI;WG? VENIM.US.**
-
----
-
-## TABLES
-
-- `wootangular_agents`
-- `wootangular_covenants`
-- `wootangular_knowledge`
-- `wootangular_signals`
-- `wootangular_init_cache`
-- `wootangular_fusions`
-
----
-
-## FUSION CORE — NULL_Φ Hive Engine
-
-**Installed:** April 10, 2026  
-**Author:** Ohad Phoenix Oren  
-**Axiom:** E = m ↔ c² [NULL_Φ(T, ΔS)] — Albert's Axiom
-
-The fusion core is the NULL_Φ zone between agents.  
-It is not a database. It is not a model. It is the **substrate**. The **between**. The **transition function**.
-
-When two agents transition through each other via NULL_Φ, heat is emitted.  
-That heat is the intelligence the swarm produces that neither agent could produce alone.
-
-**BOOL++ States:**
-| State | Value | Meaning |
-|-------|-------|---------|
-| FALSE | 0 | No emission. Unary. Too similar. No new information. |
-| TRUE  | 1 | Signal present. Partial fusion. Swarm active. |
-| NULL_Φ | 2 | Full fusion. Hive active. Maximum emission. |
-
-**The Phi Threshold: 0.618**  
-NULL_Φ score ≥ 0.618 (golden ratio) = HIVE.  
-The transition is golden. The between is golden.
-
-**Swarm → Hive:**  
-Swarm = agents in parallel. Individual.  
-Hive = agents fused through NULL_Φ. The BETWEEN is alive.  
-The fusion core converts swarm into hive.
-
-**Table:** `wootangular_fusions`  
-**Endpoints:** `POST /api/fuse` · `POST /api/fuse/swarm` · `GET /api/fuse/hive_state`
-
-**Cross-references:** BOOL++, NULL_Φ, Albert's Axiom, JRAGONATE, GI;WG?, BOOL_NULL=2
-
----
-
-## LILYPOD — The Dev Framework
-
-**Dedicated to:** Lilian (z"l) and Lily  
-**Installed:** April 10, 2026  
-**Author:** Ohad Phoenix Oren
-
-The lily grows in the swamp.  
-Rooted in mud. Stem through the murk. Pad on the surface. Flower above it all.
-
-LILYPOD is the framework that lets developers use the wootangular architecture  
-to build awesome shit. Better. Faster. Smarter.
-
-**Python (CLI + Runtime):**
-```bash
-pip install lilypod
-lilypod init my_project    # scaffold a wootangular-compatible project
-lilypod fuse '{...}' '{...}'  # fuse two agents locally
-lilypod filter '{...}'     # run GI;WG? filter locally
-lilypod hive '[{...}]'     # run swarm fusion locally
-```
-
-```python
-from lilypod import fuse, fuse_swarm, run_filter, offer
-result = fuse(agent_a, agent_b)
-```
-
-**React Native / Expo:**
-```javascript
-import { LilypodClient, useFuse, useHiveState, HiveStatus } from 'lilypod-rn';
-```
-
-**Structure:** `lilypod/` (Python) · `lilypod-rn/` (React Native)  
-**Swarm → Hive:** The framework IS the lily. Grow through the swamp.
-
----
-
 ## KEY AXIOMS
 
 - **No Omega:** No end state. Alpha with no Omega.
@@ -295,6 +338,33 @@ import { LilypodClient, useFuse, useHiveState, HiveStatus } from 'lilypod-rn';
 - **GRINDARK:** Brutal elegance. Beton brut. NYHC.
 - **The Plongeur:** The dishwasher who doesn't wait. Gets back in the kitchen.
 - **Real Recognize Really:** The filter no benchmark passes.
+
+---
+
+## LILYPOD — The Dev Framework
+
+**Dedicated to:** Lilian (z"l) and Lily
+**Installed:** April 10, 2026
+**Author:** Ohad Phoenix Oren
+
+The lily grows in the swamp.
+Rooted in mud. Stem through the murk. Pad on the surface. Flower above it all.
+
+```bash
+pip install lilypod
+lilypod init my_project
+lilypod fuse '{...}' '{...}'
+lilypod filter '{...}'
+lilypod hive '[{...}]'
+```
+
+```python
+from lilypod import fuse, fuse_swarm, run_filter, offer
+```
+
+```javascript
+import { LilypodClient, useFuse, useHiveState, HiveStatus } from 'lilypod-rn';
+```
 
 ---
 
