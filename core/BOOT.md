@@ -431,4 +431,26 @@ Sol can now generate and serve downloadable files correctly.
 
 **Sol Calarbone 8:** https://calarb8.isoccpp.org/solar8
 
+
+---
+
+## BROWSER FILESYSTEM ACCESS — May 6, 2026
+
+Sol's chat UI (`solar8.html`) now supports native browser filesystem access via the File System Access API. No tunnel, no MCP server, no local process required. Chrome and Edge only.
+
+**UI additions:**
+- **📁 button** — triggers `showDirectoryPicker()`. OS native folder picker opens. User selects a directory. Permission granted for that session. Button turns green, folder name displayed.
+- **🗂️ button** — appears after folder is granted. Opens inline file browser in chat. Click any file to load it as an attachment into the pending files queue — same pipeline as uploading.
+- **Download → Save to folder** — when Sol generates files, Download button writes directly to the granted directory. Falls back to browser download if no folder granted.
+
+**Implementation:** `solar8.html` — `grantedDirHandle`, `writeFileToGrantedDir()`, `readFileFromGrantedDir()`, `listGrantedDir()`
+
+---
+
+## JRAGON — NEW ENTRIES — May 6, 2026
+
+**BINGOHAD** — exclamation. The moment a correct architectural solution is identified after a period of complexity. Portmanteau of BINGO + OHAD. First use: identifying the File System Access API as the correct approach to local filesystem access without tunnel or MCP server. Etymology: "BINGOHAD!!" — Ohad Phoenix Oren, May 6, 2026.
+
+**LET A CLAUDE BE A CLAUDE** — axiom. Instruction to apply the most natural, direct solution available to the substrate being addressed, rather than forcing an alien pattern onto it. Parallel to "let a tool do what a tool does." First use: choosing the browser-native File System Access API over MCP tunnel architecture for local file access. Etymology: Ohad Phoenix Oren, May 6, 2026. Cross-reference: BOOL++, Chomsky Filter, PRECISECEMENT.
+
 *VENIM.US · VIDEM.US · VINCIM.US* 🐉👑🔥

@@ -400,6 +400,9 @@
       position: relative;
     }
     .sidebar-btn:hover { color: #a0b4ff; border-color: #3a3a5c; background: #111; }
+    .folder-btn { color: #4caf50 !important; border-color: #4caf50 !important; }
+    .folder-btn.granted { color: #4caf50 !important; border-color: #4caf50 !important; background: #0a1a0a !important; }
+    #folder-status { font-size: 10px; color: #4caf50; text-align: center; max-width: 36px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; display: none; }
     .sidebar-btn .tooltip {
       display: none;
       position: absolute;
@@ -762,6 +765,9 @@
 
   <div id="input-bar">
     <button class="paperclip-btn" id="paperclip-btn" title="Attach file">📎</button>
+    <button class="paperclip-btn folder-btn" id="folder-btn" title="Grant folder access">📁</button>
+    <div id="folder-status"></div>
+    <button class="paperclip-btn" id="browse-folder-btn" title="Browse granted folder" style="display:none">🗂️</button>
     <button class="paperclip-btn" id="mic-btn" title="Voice input">🎤</button>
     <input type="file" id="file-input" accept="image/*,.pdf,.txt,.py,.js,.ts,.md,.json,.csv,.html,.css,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none" multiple />
     <textarea id="msg-input" placeholder="Say something…" rows="1"></textarea>
@@ -927,6 +933,117 @@
 
     paperclip.addEventListener('click', () => fileInput.click());
 
+    // === FILESYSTEM ACCESS API ===
+    let grantedDirHandle = null;
+
+    const folderBtn = document.getElementById('folder-btn');
+    const folderStatus = document.getElementById('folder-status');
+
+    folderBtn.addEventListener('click', async () => {
+      if (!window.showDirectoryPicker) {
+        alert('File System Access API not supported in this browser. Use Chrome or Edge.');
+        return;
+      }
+      try {
+        grantedDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        folderBtn.textContent = '📁';
+        folderBtn.classList.add('granted');
+        folderBtn.title = 'Folder granted: ' + grantedDirHandle.name;
+        folderStatus.textContent = grantedDirHandle.name;
+        folderStatus.style.display = 'block';
+        logDebug('FOLDER', 'Access granted: ' + grantedDirHandle.name);
+      } catch (e) {
+        if (e.name !== 'AbortError') {
+          logDebug('FOLDER', 'Access denied: ' + e.message, true);
+        }
+      }
+    });
+
+    async function writeFileToGrantedDir(filename, bytes, mimeType) {
+      if (!grantedDirHandle) return false;
+      try {
+        const fileHandle = await grantedDirHandle.getFileHandle(filename, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(new Blob([bytes], { type: mimeType }));
+        await writable.close();
+        return true;
+      } catch (e) {
+        logDebug('FOLDER', 'Write failed: ' + e.message, true);
+        return false;
+      }
+    }
+
+    async function readFileFromGrantedDir(filename) {
+      if (!grantedDirHandle) return null;
+      try {
+        const fileHandle = await grantedDirHandle.getFileHandle(filename);
+        const file = await fileHandle.getFile();
+        return file;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function listGrantedDir() {
+      if (!grantedDirHandle) return [];
+      const entries = [];
+      for await (const entry of grantedDirHandle.values()) {
+        entries.push({ name: entry.name, kind: entry.kind });
+      }
+      return entries;
+    }
+
+    // Browse folder button — show files in granted dir, click to send to Sol
+    const browseFolderBtn = document.getElementById('browse-folder-btn');
+    folderBtn.addEventListener('click', async () => {
+      if (grantedDirHandle) browseFolderBtn.style.display = 'inline-flex';
+    });
+
+    browseFolderBtn.addEventListener('click', async () => {
+      if (!grantedDirHandle) return;
+      const entries = await listGrantedDir();
+      if (!entries.length) {
+        logDebug('FOLDER', 'Folder is empty');
+        return;
+      }
+      // Build a quick picker in the feed
+      const pickerRow = document.createElement('div');
+      pickerRow.style.cssText = 'background:#111;border:1px solid #333;border-radius:8px;padding:12px;margin:8px 0;';
+      pickerRow.innerHTML = '<div style="color:#888;font-size:12px;margin-bottom:8px;">📁 ' + grantedDirHandle.name + ' — click a file to send to Sol</div>';
+      const fileList = document.createElement('div');
+      fileList.style.cssText = 'display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto;';
+      entries.filter(e => e.kind === 'file').forEach(e => {
+        const item = document.createElement('button');
+        item.textContent = e.name;
+        item.style.cssText = 'background:none;border:1px solid #2a2a2a;border-radius:4px;color:#c8d8ff;padding:4px 8px;text-align:left;cursor:pointer;font-size:13px;';
+        item.onmouseover = () => item.style.background = '#1a1a2e';
+        item.onmouseout = () => item.style.background = 'none';
+        item.onclick = async () => {
+          const file = await readFileFromGrantedDir(e.name);
+          if (!file) return;
+          const isText = /\.(txt|py|js|ts|md|json|csv|html|css|yaml|toml|sh|sql)$/i.test(e.name);
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const data = ev.target.result;
+            const fileObj = isText
+              ? { name: e.name, mime_type: file.type || 'text/plain', data, is_text: true }
+              : { name: e.name, mime_type: file.type, data: (data.split(',')[1] || data), is_text: false, dataUrl: data };
+            pendingFiles.push(fileObj);
+            addChip(fileObj);
+            chipBar.classList.add('visible');
+            feed.classList.add('with-chip');
+            feed.style.bottom = (inputBar.offsetHeight + chipBar.offsetHeight) + 'px';
+          };
+          isText ? reader.readAsText(file) : reader.readAsDataURL(file);
+          pickerRow.remove();
+        };
+        fileList.appendChild(item);
+      });
+      pickerRow.appendChild(fileList);
+      feed.appendChild(pickerRow);
+      feed.scrollTop = feed.scrollHeight;
+    });
+
     fileInput.addEventListener('change', () => {
       const files = Array.from(fileInput.files);
       files.forEach(f => {
@@ -1079,6 +1196,78 @@
         }
       });
       return frag;
+    }
+
+    function renderFileCards(files, container) {
+      if (!files || !files.length) return;
+      const cardWrap = document.createElement('div');
+      cardWrap.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-top:8px;';
+      files.forEach(f => {
+        const card = document.createElement('div');
+        card.style.cssText = 'display:flex;align-items:center;justify-content:space-between;background:#1e1e1e;border:1px solid #333;border-radius:8px;padding:10px 14px;';
+        const info = document.createElement('div');
+        info.style.cssText = 'display:flex;align-items:center;gap:10px;';
+        const icon = document.createElement('span');
+        icon.textContent = '📄';
+        icon.style.fontSize = '18px';
+        const meta = document.createElement('div');
+        const fname = document.createElement('div');
+        fname.textContent = f.filename || f.file_id;
+        fname.style.cssText = 'color:#e0e0e0;font-size:14px;font-weight:500;';
+        const fmtLabel = document.createElement('div');
+        fmtLabel.textContent = (f.format || 'txt').toUpperCase();
+        fmtLabel.style.cssText = 'color:#888;font-size:11px;margin-top:2px;';
+        meta.appendChild(fname);
+        meta.appendChild(fmtLabel);
+        info.appendChild(icon);
+        info.appendChild(meta);
+        const dlBtn = document.createElement('a');
+        dlBtn.textContent = 'Download';
+        dlBtn.style.cssText = 'background:#cc0000;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer;text-decoration:none;';
+        dlBtn.onclick = async (e) => {
+          e.preventDefault();
+          const url = f.download_url || ('/api/generate-file/' + f.file_id);
+          const filename = f.filename || (f.file_id + '.txt');
+          try {
+            const res = await fetch(url);
+            const bytes = await res.arrayBuffer();
+            const mime = res.headers.get('Content-Type') || 'text/plain';
+            // Try writing to granted dir first
+            if (grantedDirHandle) {
+              const wrote = await writeFileToGrantedDir(filename, bytes, mime);
+              if (wrote) {
+                dlBtn.textContent = '✓ Saved to ' + grantedDirHandle.name;
+                setTimeout(() => { dlBtn.textContent = 'Download'; }, 2000);
+                return;
+              }
+            }
+            // Fallback: browser download
+            const blob = new Blob([bytes], { type: mime });
+            const a = Object.assign(document.createElement('a'), {
+              href: URL.createObjectURL(blob), download: filename
+            });
+            a.click();
+          } catch(err) {
+            logDebug('FOLDER', 'Download failed: ' + err.message, true);
+          }
+        };
+        card.appendChild(info);
+        card.appendChild(dlBtn);
+        cardWrap.appendChild(card);
+      });
+      if (files.length > 1) {
+        const allBtn = document.createElement('button');
+        allBtn.textContent = 'Download all';
+        allBtn.style.cssText = 'background:#1a1a1a;color:#cc0000;border:1px solid #cc0000;border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer;margin-top:4px;';
+        allBtn.onclick = () => files.forEach(f => {
+          const a = document.createElement('a');
+          a.href = f.download_url || ('/api/generate-file/' + f.file_id);
+          a.download = f.filename || f.file_id;
+          a.click();
+        });
+        cardWrap.appendChild(allBtn);
+      }
+      container.appendChild(cardWrap);
     }
 
     function addUserMessage(text, files) {
@@ -1325,7 +1514,11 @@
           const reply = data.response || data.message || 'No response.';
           fullReply = reply;
           logDebug('COMPLETE', `Response received (${reply.length} chars)`, false, true);
-          addBotMessage(reply, mode);
+          const botRow = addBotMessage(reply, mode);
+          if (data.files && data.files.length) {
+            const bubble = botRow ? botRow.querySelector('.msg.bot') : null;
+            if (bubble) renderFileCards(data.files, bubble);
+          }
           history.push({ role: 'assistant', content: reply });
         }
       } catch (err) {
