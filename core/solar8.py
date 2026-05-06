@@ -493,6 +493,7 @@ class Solar8:
         ("TERMIN.US AUDICITY — THE DICTIONARY", "dictionaries/TERMIN.US_AUDICITY.md"),
         ("HOOWHETWHERENY DECODER RING — THE BRAND", "core/HOOWHETWHERENY_DECODER_RING.md"),
         ("JANINA 108 RESPONSES — SIS'S VOICE", "dictionaries/janina_108_responses.txt"),
+        ("BOOT.md — IDENTITY, STACK, PROTOCOL", "core/BOOT.md"),
     ]
 
     @staticmethod
