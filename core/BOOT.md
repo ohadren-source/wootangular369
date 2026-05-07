@@ -660,6 +660,22 @@ raw = base64.b64decode(truncated)  # ✅ No "Incorrect padding" error
 - Processor: `core/file_processor.py` (semantic chunking + instruction injection)
 - Design spec: `docs/ELEPHANT_ENGINE_Technical_Specification.md` (14 sections, 600+ lines)
 
+---
+
+### PHASE 1 vs PHASE 2
+
+**Phase 1 (NOW - May 7, 2026):** File upload + storage. Direct read-modify-regenerate workflows.
+- Available: `read_elephant_file(file_id)` — streams file content from database
+- Available: `generate_file(content, filename, format)` — stores revised content, returns download link
+- For editing workflows: Upload file → read_elephant_file → modify → generate_file → download
+
+**Phase 2 (Planned):** Semantic chunking + multi-chunk processing pipeline.
+- Planned: `upload_file_large()`, `list_file_chunks()`, `process_file_chunk()`, `rebuild_file_from_chunks()`, `download_processed_file()`
+- For large file processing: Break into chunks, process each with Claude instruction context, assemble result
+- Designed for 5MB+ files where context needs to be applied chunk-by-chunk
+
+---
+
 ### The Paradigm Shift
 
 **Old:** User uploads 9MB file → Sol rejects → "File too large"
