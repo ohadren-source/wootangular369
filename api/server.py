@@ -1144,7 +1144,14 @@ def _build_file_bytes(content: str, filename: str, fmt: str):
 
 def _safe_download_name(filename: str, fmt: str) -> str:
     """Build safe download filename with extension."""
-    safe = "".join(c if c.isalnum() or c in "_-" else "_" for c in filename)
+    # Remove extension if it already has one (we'll add our own)
+    if "." in filename:
+        filename = filename.rsplit(".", 1)[0]
+    # Allow alphanumeric, spaces, dashes, underscores, parentheses, brackets
+    # Remove only truly problematic chars: / \ : * ? " < > |
+    safe = "".join(c if c not in '/\\:*?"<>|' else "_" for c in filename).strip()
+    if not safe:
+        safe = "document"
     ext = {"md": "md", "txt": "txt", "html": "html"}.get(fmt, "txt")
     return f"{safe}.{ext}"
 
