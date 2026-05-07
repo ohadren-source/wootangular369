@@ -951,8 +951,8 @@ class Solar8:
                     return "read_elephant_file error: file_id required"
                 try:
                     import requests as http_requests
-                    base_url = os.getenv("SOLAR8_URL", "").rstrip("/")
-                    url = f"{base_url}/api/elephant/read/{file_id}" if base_url else f"/api/elephant/read/{file_id}"
+                    base_url = os.getenv("SOLAR8_URL", "https://web-production-8b53fe.up.railway.app").rstrip("/")
+                    url = f"{base_url}/api/elephant/read/{file_id}"
                     resp = http_requests.get(url, timeout=10)
                     if resp.ok:
                         data = resp.json()
