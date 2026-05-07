@@ -684,7 +684,7 @@ class Solar8:
         # Size limits to prevent crashes
         MAX_IMAGE_SIZE = 4000000  # 4MB base64
         MAX_PDF_SIZE = 10000000   # 10MB base64
-        MAX_TEXT_SIZE = 500000    # 500KB text content
+        MAX_TEXT_SIZE = 9000000   # 9MB text content (HTML, code, etc.)
 
         def is_file_too_large(f: dict) -> bool:
             """Check if file exceeds size limits."""
@@ -707,7 +707,7 @@ class Solar8:
 
             if is_file_too_large(f):
                 logger.warning("File too large: %s (%d bytes)", f.get("name", "unknown"), len(data) if data else 0)
-                return f"[File '{f.get('name', 'unknown')}' is too large to process. Max size limits: Images 4MB, PDFs 10MB, Text 500KB]\n\n{message}"
+                return f"[File '{f.get('name', 'unknown')}' is too large to process. Max size limits: Images 4MB, PDFs 10MB, Text 9MB]\n\n{message}"
 
             if mime.startswith("image/"):
                 # Validate image data before sending to Claude
