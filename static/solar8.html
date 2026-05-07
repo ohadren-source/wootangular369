@@ -1067,17 +1067,16 @@
         const isWordBinary = /\.(doc|docx)$/i.test(f.name) ||
           ['application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(f.type);
 
+        // Check ELEPHANT ENGINE threshold FIRST (before FileReader)
+        if (isText && !isWordBinary && f.size > ELEPHANT_THRESHOLD) {
+          logDebug('FILE', f.name + ' (' + Math.round(f.size / 1000) + 'KB) exceeds 700KB. Routing to ELEPHANT ENGINE for chunking.', false);
+          routeToElephantEngine(f);
+          return; // Skip FileReader, skip pendingFiles, skip everything
+        }
+
         const maxSize = isText && !isWordBinary ? MAX_TEXT_SIZE : MAX_BINARY_SIZE;
         if (f.size > maxSize) {
           logDebug('FILE', f.name + ': too large (' + Math.round(f.size / 1000000) + 'MB). Max ' + Math.round(maxSize / 1000000) + 'MB.', true);
-          return;
-        }
-
-        // Check ELEPHANT ENGINE threshold for text files
-        if (isText && !isWordBinary && f.size > ELEPHANT_THRESHOLD) {
-          logDebug('FILE', f.name + ' (' + Math.round(f.size / 1000) + 'KB) exceeds 700KB. Routing to ELEPHANT ENGINE for chunking.', false);
-          // Auto-route to ELEPHANT ENGINE
-          routeToElephantEngine(f);
           return;
         }
 
