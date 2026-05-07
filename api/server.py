@@ -368,6 +368,16 @@ def chat():
         for f in files:
             data_size = len(f.get("data", "")) if isinstance(f.get("data"), str) else 0
             mime = f.get("mime_type", "")
+            is_text = mime.startswith('text/') or mime in ['application/json', 'application/javascript']
+
+            # Text files over 700KB should use ELEPHANT ENGINE
+            if is_text and data_size > 700000:  # 700KB threshold
+                return jsonify({
+                    "response": f"File '{f.get('name', 'unknown')}' ({data_size // 1000}KB) exceeds the 700KB direct processing limit. Use ELEPHANT ENGINE upload for large files.",
+                    "governor": True,
+                    "elephant_engine": True,
+                }), 200
+
             if data_size > 20000000:  # 20MB hard limit
                 return jsonify({
                     "response": f"File '{f.get('name', 'unknown')}' is too large ({data_size // 1000000}MB). Maximum file size is 20MB.",
@@ -1125,6 +1135,42 @@ def download_all_files():
         )
     except Exception as e:
         logger.error("download_all_files error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/elephant/upload", methods=["POST"])
+def elephant_upload():
+    """Upload a file to ELEPHANT ENGINE for chunking and processing."""
+    try:
+        if 'file' not in request.files:
+            return jsonify({"error": "No file provided"}), 400
+
+        file = request.files['file']
+        if not file or file.filename == '':
+            return jsonify({"error": "No file selected"}), 400
+
+        file_id = str(uuid.uuid4())
+        filename = file.filename
+        content = file.read()
+
+        # Store in database with chunking metadata
+        banks.store_generated_file(
+            file_id=file_id,
+            filename=filename,
+            mime_type=file.content_type or "application/octet-stream",
+            content=content,
+            generation_method="elephant_upload"
+        )
+
+        logger.info("[ELEPHANT] Uploaded %s (%d bytes) as %s", filename, len(content), file_id)
+        return jsonify({
+            "status": "ok",
+            "file_id": file_id,
+            "filename": filename,
+            "size": len(content)
+        }), 200
+    except Exception as e:
+        logger.error("elephant_upload error: %s", e)
         return jsonify({"error": str(e)}), 500
 
 

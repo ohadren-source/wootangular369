@@ -1020,6 +1020,16 @@
           const file = await readFileFromGrantedDir(e.name);
           if (!file) return;
           const isText = /\.(txt|py|js|ts|md|json|csv|html|css|yaml|toml|sh|sql)$/i.test(e.name);
+          const ELEPHANT_THRESHOLD = 700000; // 700KB
+
+          // Check ELEPHANT ENGINE threshold for text files
+          if (isText && file.size > ELEPHANT_THRESHOLD) {
+            logDebug('FILE', file.name + ' (' + Math.round(file.size / 1000) + 'KB) exceeds 700KB. Routing to ELEPHANT ENGINE.', false);
+            routeToElephantEngine(file);
+            pickerRow.remove();
+            return;
+          }
+
           const reader = new FileReader();
           reader.onload = (ev) => {
             const data = ev.target.result;
@@ -1049,6 +1059,7 @@
 
         const MAX_TEXT_SIZE = 9000000;
         const MAX_BINARY_SIZE = 20000000;
+        const ELEPHANT_THRESHOLD = 700000; // 700KB threshold for ELEPHANT ENGINE
 
         const isText = /\.(txt|py|js|ts|md|json|csv|html|css)$/i.test(f.name) ||
           ['text/plain','text/x-python','application/javascript','text/javascript',
@@ -1059,6 +1070,14 @@
         const maxSize = isText && !isWordBinary ? MAX_TEXT_SIZE : MAX_BINARY_SIZE;
         if (f.size > maxSize) {
           logDebug('FILE', f.name + ': too large (' + Math.round(f.size / 1000000) + 'MB). Max ' + Math.round(maxSize / 1000000) + 'MB.', true);
+          return;
+        }
+
+        // Check ELEPHANT ENGINE threshold for text files
+        if (isText && !isWordBinary && f.size > ELEPHANT_THRESHOLD) {
+          logDebug('FILE', f.name + ' (' + Math.round(f.size / 1000) + 'KB) exceeds 700KB. Routing to ELEPHANT ENGINE for chunking.', false);
+          // Auto-route to ELEPHANT ENGINE
+          routeToElephantEngine(f);
           return;
         }
 
@@ -1123,6 +1142,27 @@
       chipBar.classList.remove('visible');
       feed.classList.remove('with-chip');
       feed.style.bottom = inputBar.offsetHeight + 'px';
+    }
+
+    async function routeToElephantEngine(file) {
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        logDebug('ELEPHANT', 'Uploading ' + file.name + ' to ELEPHANT ENGINE');
+        const res = await fetch('/api/elephant/upload', {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await res.json();
+        if (res.ok && data.file_id) {
+          logDebug('ELEPHANT', 'Upload complete: ' + data.file_id, false, true);
+          addThinking('✓ ' + file.name + ' chunked and stored. Ready to process.');
+        } else {
+          logDebug('ELEPHANT', 'Upload failed: ' + (data.error || 'unknown error'), true);
+        }
+      } catch (err) {
+        logDebug('ELEPHANT', 'Upload error: ' + err.message, true);
+      }
     }
 
     const LANG_EXT = {
