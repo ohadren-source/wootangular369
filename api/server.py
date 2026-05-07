@@ -1183,14 +1183,18 @@ def elephant_read(file_id):
             return jsonify({"error": "File not found"}), 404
 
         content = file_data.get("content")
+        logger.info(f"[ELEPHANT_READ] Content type: {type(content)}, first 50 chars: {str(content)[:50]}")
 
         # Handle PostgreSQL bytea hex encoding
         if isinstance(content, str):
             try:
                 # Try to decode from hex (PostgreSQL bytea returns hex)
+                logger.info("[ELEPHANT_READ] Attempting hex decode...")
                 content = bytes.fromhex(content)
-            except (ValueError, AttributeError):
+                logger.info(f"[ELEPHANT_READ] Hex decode successful, bytes length: {len(content)}")
+            except (ValueError, AttributeError) as e:
                 # If not hex, assume it's a string
+                logger.info(f"[ELEPHANT_READ] Hex decode failed ({e}), encoding as UTF-8")
                 content = content.encode("utf-8")
         elif isinstance(content, bytes):
             # Already bytes, use as-is
