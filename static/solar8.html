@@ -951,6 +951,7 @@
         folderBtn.title = 'Folder granted: ' + grantedDirHandle.name;
         folderStatus.textContent = grantedDirHandle.name;
         folderStatus.style.display = 'block';
+        browseFolderBtn.style.display = 'inline-flex';
         logDebug('FOLDER', 'Access granted: ' + grantedDirHandle.name);
       } catch (e) {
         if (e.name !== 'AbortError') {
@@ -995,9 +996,6 @@
 
     // Browse folder button — show files in granted dir, click to send to Sol
     const browseFolderBtn = document.getElementById('browse-folder-btn');
-    folderBtn.addEventListener('click', async () => {
-      if (grantedDirHandle) browseFolderBtn.style.display = 'inline-flex';
-    });
 
     browseFolderBtn.addEventListener('click', async () => {
       if (!grantedDirHandle) return;
@@ -1228,8 +1226,21 @@
           e.preventDefault();
           const url = f.download_url || ('/api/generate-file/' + f.file_id);
           const filename = f.filename || (f.file_id + '.txt');
+          const originalText = dlBtn.textContent;
+          dlBtn.textContent = 'Downloading...';
+          dlBtn.disabled = true;
           try {
             const res = await fetch(url);
+            if (!res.ok) {
+              dlBtn.textContent = '✗ Failed (HTTP ' + res.status + ')';
+              dlBtn.style.background = '#cc3333';
+              setTimeout(() => {
+                dlBtn.textContent = originalText;
+                dlBtn.style.background = '#cc0000';
+                dlBtn.disabled = false;
+              }, 3000);
+              return;
+            }
             const bytes = await res.arrayBuffer();
             const mime = res.headers.get('Content-Type') || 'text/plain';
             // Try writing to granted dir first
@@ -1237,7 +1248,10 @@
               const wrote = await writeFileToGrantedDir(filename, bytes, mime);
               if (wrote) {
                 dlBtn.textContent = '✓ Saved to ' + grantedDirHandle.name;
-                setTimeout(() => { dlBtn.textContent = 'Download'; }, 2000);
+                setTimeout(() => {
+                  dlBtn.textContent = originalText;
+                  dlBtn.disabled = false;
+                }, 2000);
                 return;
               }
             }
@@ -1247,8 +1261,20 @@
               href: URL.createObjectURL(blob), download: filename
             });
             a.click();
+            dlBtn.textContent = '✓ Downloaded';
+            setTimeout(() => {
+              dlBtn.textContent = originalText;
+              dlBtn.disabled = false;
+            }, 1500);
           } catch(err) {
-            logDebug('FOLDER', 'Download failed: ' + err.message, true);
+            dlBtn.textContent = '✗ Error: ' + err.message;
+            dlBtn.style.background = '#cc3333';
+            logDebug('DOWNLOAD', 'Failed: ' + err.message, true);
+            setTimeout(() => {
+              dlBtn.textContent = originalText;
+              dlBtn.style.background = '#cc0000';
+              dlBtn.disabled = false;
+            }, 3000);
           }
         };
         card.appendChild(info);
@@ -1259,12 +1285,48 @@
         const allBtn = document.createElement('button');
         allBtn.textContent = 'Download all';
         allBtn.style.cssText = 'background:#1a1a1a;color:#cc0000;border:1px solid #cc0000;border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer;margin-top:4px;';
-        allBtn.onclick = () => files.forEach(f => {
-          const a = document.createElement('a');
-          a.href = f.download_url || ('/api/generate-file/' + f.file_id);
-          a.download = f.filename || f.file_id;
-          a.click();
-        });
+        allBtn.onclick = async () => {
+          const originalText = allBtn.textContent;
+          allBtn.textContent = 'Downloading...';
+          allBtn.disabled = true;
+          let succeeded = 0;
+          let failed = 0;
+          for (const f of files) {
+            try {
+              const url = f.download_url || ('/api/generate-file/' + f.file_id);
+              const filename = f.filename || (f.file_id + '.txt');
+              const res = await fetch(url);
+              if (!res.ok) {
+                failed++;
+                continue;
+              }
+              const bytes = await res.arrayBuffer();
+              const mime = res.headers.get('Content-Type') || 'text/plain';
+              if (grantedDirHandle) {
+                const wrote = await writeFileToGrantedDir(filename, bytes, mime);
+                if (wrote) succeeded++; else failed++;
+              } else {
+                const blob = new Blob([bytes], { type: mime });
+                const a = Object.assign(document.createElement('a'), {
+                  href: URL.createObjectURL(blob), download: filename
+                });
+                a.click();
+                succeeded++;
+              }
+            } catch (err) {
+              failed++;
+            }
+          }
+          if (failed === 0) {
+            allBtn.textContent = '✓ All downloaded (' + succeeded + ')';
+          } else {
+            allBtn.textContent = '⚠ ' + succeeded + '/' + files.length + ' succeeded';
+          }
+          setTimeout(() => {
+            allBtn.textContent = originalText;
+            allBtn.disabled = false;
+          }, 2000);
+        };
         cardWrap.appendChild(allBtn);
       }
       container.appendChild(cardWrap);
@@ -1521,10 +1583,24 @@
             const found = [];
             let m;
             while ((m = pattern.exec(reply)) !== null) {
-              // Try to extract filename from surrounding text
-              const fnMatch = reply.match(/filename[:\s]+([^\s\)]+)/i);
-              const filename = fnMatch ? fnMatch[1] : ('file-' + m[1].slice(0,8) + '.txt');
-              const fmt = filename.split('.').pop() || 'txt';
+              // Extract filename from context around the URL (within 200 chars before/after)
+              const urlIndex = m.index;
+              const contextStart = Math.max(0, urlIndex - 200);
+              const contextEnd = Math.min(reply.length, urlIndex + m[0].length + 200);
+              const context = reply.substring(contextStart, contextEnd);
+
+              let filename = null;
+              // Try to match "filename: myfile.md" or "filename:myfile.md" in the context
+              const fnMatch = context.match(/filename[:\s]+([^\s,\)\.]+(?:\.[a-z0-9]+)?)/i);
+              if (fnMatch && fnMatch[1]) {
+                filename = fnMatch[1];
+              }
+
+              if (!filename) {
+                filename = 'file-' + m[1].slice(0, 8) + '.txt';
+              }
+
+              const fmt = filename.split('.').pop().toLowerCase() || 'txt';
               found.push({
                 file_id: m[1],
                 filename: filename,
