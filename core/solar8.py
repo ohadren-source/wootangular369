@@ -928,7 +928,7 @@ class Solar8:
 
                     base_url = os.getenv("SOLAR8_URL", "").rstrip("/")
                     download_url = f"{base_url}/api/generate-file/{file_id}" if base_url else f"/api/generate-file/{file_id}"
-                    return f"File ready for download: {download_url} (filename: {download_name})"
+                    return f"[{download_name}]({download_url})"
                 except Exception as e:
                     return f"generate_file failed: {e}"
             else:
