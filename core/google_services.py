@@ -5,8 +5,16 @@ Google Cloud service wrappers. Janina pattern.
 import os
 import logging
 import requests
+import base64
+import io
 
 logger = logging.getLogger(__name__)
+
+try:
+    from PIL import Image
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
 
 
 # ── Brave Search ──────────────────────────────────────────
@@ -52,12 +60,55 @@ def google_search(query: str, count: int = 5) -> list[dict]:
 
 
 # ── Google Cloud Vision ───────────────────────────────────
+def _compress_image(image_base64: str, mime_type: str = "image/jpeg", max_size_bytes: int = 4000000) -> str:
+    """Compress image if it exceeds max size. Returns base64 string."""
+    if not HAS_PIL:
+        return image_base64
+
+    try:
+        raw = base64.b64decode(image_base64)
+        if len(raw) <= max_size_bytes:
+            return image_base64
+
+        img = Image.open(io.BytesIO(raw))
+
+        # Scale down until under size limit
+        quality = 85
+        while quality > 30:
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG" if mime_type == "image/jpeg" else "PNG", quality=quality, optimize=True)
+            compressed = buffer.getvalue()
+            if len(compressed) <= max_size_bytes:
+                return base64.b64encode(compressed).decode('utf-8')
+            quality -= 5
+
+        return image_base64
+    except Exception as e:
+        logger.warning("Image compression failed: %s", e)
+        return image_base64
+
+
 def analyze_image(image_base64: str, mime_type: str = "image/jpeg") -> dict:
     api_key = os.getenv("GOOGLE_VISION_API_KEY")
     if not api_key:
         logger.warning("GOOGLE_VISION_API_KEY not set.")
         return {}
+
     try:
+        if not image_base64 or not isinstance(image_base64, str):
+            logger.error("analyze_image: invalid image_base64")
+            return {}
+
+        # Validate base64
+        try:
+            base64.b64decode(image_base64[:100])
+        except Exception:
+            logger.error("analyze_image: invalid base64 data")
+            return {}
+
+        # Compress if needed
+        image_base64 = _compress_image(image_base64, mime_type)
+
         payload = {
             "requests": [{
                 "image": {"content": image_base64},
@@ -72,14 +123,26 @@ def analyze_image(image_base64: str, mime_type: str = "image/jpeg") -> dict:
         resp = requests.post(
             f"https://vision.googleapis.com/v1/images:annotate?key={api_key}",
             json=payload,
-            timeout=10,
+            timeout=15,
         )
         resp.raise_for_status()
         r = resp.json().get("responses", [{}])[0]
+
+        # Check for API errors
+        if "error" in r:
+            logger.error("Vision API response error: %s", r["error"])
+            return {}
+
         labels = [l["description"] for l in r.get("labelAnnotations", [])]
         text = r.get("fullTextAnnotation", {}).get("text", "")
         objects = [o["name"] for o in r.get("localizedObjectAnnotations", [])]
         return {"labels": labels, "text": text, "objects": objects}
+    except requests.exceptions.Timeout:
+        logger.error("Vision API timeout (image too large?)")
+        return {}
+    except requests.exceptions.ConnectionError as e:
+        logger.error("Vision API connection error: %s", e)
+        return {}
     except Exception as e:
         logger.error("Vision API error: %s", e)
         return {}

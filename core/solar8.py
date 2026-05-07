@@ -683,14 +683,25 @@ class Solar8:
         if len(all_files) == 1:
             f = all_files[0]
             mime = f.get("mime_type", "")
+            data = f.get("data", "")
+
             if mime.startswith("image/"):
+                # Validate image data before sending to Claude
+                try:
+                    import base64
+                    if isinstance(data, str):
+                        base64.b64decode(data[:100])
+                except Exception as e:
+                    logger.warning("Invalid image data: %s", e)
+                    return message
+
                 return [
                     {
                         "type": "image",
                         "source": {
                             "type": "base64",
                             "media_type": mime,
-                            "data": f["data"],
+                            "data": data,
                         },
                     },
                     {"type": "text", "text": message},
@@ -781,7 +792,14 @@ class Solar8:
                 self._current_sources.extend(results)
                 return self._format_search_for_citations(results)
             elif name == "analyze_image":
-                return analyze_image(inputs["image_base64"], inputs.get("mime_type", "image/jpeg"))
+                try:
+                    result = analyze_image(inputs.get("image_base64", ""), inputs.get("mime_type", "image/jpeg"))
+                    if not result or not isinstance(result, dict):
+                        return "Image analysis returned no results. Try a different image or angle."
+                    return result
+                except Exception as e:
+                    logger.error("analyze_image crashed: %s", e)
+                    return "Image analysis failed. Try a clearer or smaller image."
             elif name == "generate_image":
                 from core.image_gen import generate_image
                 result = generate_image(inputs["prompt"], inputs.get("size", "1024x1024"))

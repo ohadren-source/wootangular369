@@ -1649,11 +1649,20 @@
           if (pendingFiles.length >= 9) continue;
           const file = items[i].getAsFile();
           if (!file) continue;
+          if (file.size > 10000000) {
+            logDebug('IMAGE', 'Image too large (' + Math.round(file.size / 1000000) + 'MB). Max 10MB.', true);
+            continue;
+          }
           const fileName = 'pasted-image-' + Date.now() + '.png';
           const reader = new FileReader();
           reader.onload = (ev) => {
             const dataUrl = ev.target.result;
-            const fileObj = { name: fileName, mime_type: file.type || 'image/png', data: (dataUrl.split(',')[1] || dataUrl), is_text: false, dataUrl: dataUrl };
+            const dataStr = dataUrl.split(',')[1] || dataUrl;
+            if (dataStr.length > 15000000) {
+              logDebug('IMAGE', 'Encoded image too large. Try compressing first.', true);
+              return;
+            }
+            const fileObj = { name: fileName, mime_type: file.type || 'image/png', data: dataStr, is_text: false, dataUrl: dataUrl };
             pendingFiles.push(fileObj);
             addChip(fileObj);
             chipBar.classList.add('visible');
