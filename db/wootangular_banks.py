@@ -9,6 +9,7 @@ import os
 import json
 import uuid
 import logging
+import hashlib
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
