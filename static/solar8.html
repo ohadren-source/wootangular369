@@ -1598,36 +1598,49 @@
             const found = [];
             let m;
             while ((m = pattern.exec(reply)) !== null) {
-              // Extract filename from context around the URL (within 300 chars before/after)
               const urlIndex = m.index;
-              const contextStart = Math.max(0, urlIndex - 300);
-              const contextEnd = Math.min(reply.length, urlIndex + m[0].length + 300);
-              const context = reply.substring(contextStart, contextEnd);
-
+              const urlText = m[0];
               let filename = null;
 
-              // Method 1: Try "filename: myfile.txt" pattern
-              let fnMatch = context.match(/filename[:\s]+([^\)]+?)(?:\)|,|$)/i);
-              if (fnMatch && fnMatch[1]) {
-                filename = fnMatch[1].trim();
+              // METHOD 1 (PRIORITY): Look for markdown link pattern [filename](url) immediately before the URL
+              // Search backwards from URL for [filename] pattern
+              const beforeUrl = reply.substring(Math.max(0, urlIndex - 100), urlIndex);
+              let mdMatch = beforeUrl.match(/\[([a-zA-Z0-9\s\-\._\(\)]+\.\w+)\]\s*\(\s*$/);
+              if (mdMatch && mdMatch[1]) {
+                filename = mdMatch[1].trim();
               }
 
-              // Method 2: Try "Download X.txt" or "[X.txt]" pattern around the URL
+              // METHOD 2: Try markdown inline link [filename](url) format
               if (!filename) {
-                fnMatch = context.match(/download\s+([a-zA-Z0-9\s\-\._\(\)]+\.\w+)/i);
-                if (fnMatch && fnMatch[1]) {
-                  filename = fnMatch[1].trim();
+                const linkPattern = /\[([a-zA-Z0-9\s\-\._\(\)]+\.\w+)\]\s*\(\s*\/api\/generate-file\//;
+                mdMatch = reply.substring(Math.max(0, urlIndex - 200), urlIndex + 50).match(linkPattern);
+                if (mdMatch && mdMatch[1]) {
+                  filename = mdMatch[1].trim();
                 }
               }
 
-              // Method 3: Try markdown link pattern "[filename](url)"
+              // METHOD 3: Fallback - look in 300-char context window
               if (!filename) {
-                fnMatch = context.match(/\[([a-zA-Z0-9\s\-\._\(\)]+\.\w+)\]/);
+                const contextStart = Math.max(0, urlIndex - 300);
+                const contextEnd = Math.min(reply.length, urlIndex + urlText.length + 300);
+                const context = reply.substring(contextStart, contextEnd);
+
+                // Try "filename: myfile.txt" pattern
+                let fnMatch = context.match(/filename[:\s]+([^\)]+?)(?:\)|,|$)/i);
                 if (fnMatch && fnMatch[1]) {
                   filename = fnMatch[1].trim();
                 }
+
+                // Try "Download X.txt" pattern
+                if (!fnMatch) {
+                  fnMatch = context.match(/download\s+([a-zA-Z0-9\s\-\._\(\)]+\.\w+)/i);
+                  if (fnMatch && fnMatch[1]) {
+                    filename = fnMatch[1].trim();
+                  }
+                }
               }
 
+              // FALLBACK: Generate from file_id if all else fails
               if (!filename) {
                 filename = 'file-' + m[1].slice(0, 8) + '.txt';
               }
