@@ -918,7 +918,7 @@ class Solar8:
                     mime_type = mime_type_map.get(fmt, "text/plain")
 
                     # Store in database
-                    self.db_banks.store_generated_file(
+                    banks.store_generated_file(
                         file_id=file_id,
                         filename=download_name,
                         mime_type=mime_type,
