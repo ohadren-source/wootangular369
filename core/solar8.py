@@ -555,7 +555,7 @@ class Solar8:
         normalized_role = str(role or "GUEST").strip().upper()
         return "ROOT" if normalized_role == "ROOT" else "GUEST"
 
-    def _build_system_prompt(self, mode: str = "speed", role: str = "GUEST", history: list = None) -> list[dict]:
+    def _build_system_prompt(self, mode: str = "speed", role: str = "GUEST", history: list = None, has_large_file: bool = False) -> list[dict]:
         """Returns system prompt as cacheable content blocks, mode-aware."""
         role = self._normalize_role(role)
         if role != "ROOT":
@@ -628,9 +628,10 @@ class Solar8:
 
         # Only inject full corpus on first exchange — conversation history carries it forward.
         # Subsequent exchanges get persona + awareness blocks only, saving 50k+ tokens per request.
+        # Skip corpus on large files (>2MB) to prevent token overflow.
         is_first_exchange = not history or len([m for m in history if m.get("role") == "user"]) == 0
 
-        if is_first_exchange:
+        if is_first_exchange and not has_large_file:
             corpus_section = (
                 "\n\n---\n\nCORPUS:\n"
                 + corpus_block
@@ -638,8 +639,11 @@ class Solar8:
             )
             logger.info("First exchange — injecting full corpus")
         else:
+            if has_large_file:
+                logger.info("Large file detected (>2MB) — corpus skipped to prevent token overflow")
+            else:
+                logger.info("Subsequent exchange — corpus skipped, history carries context")
             corpus_section = ""
-            logger.info("Subsequent exchange — corpus skipped, history carries context")
 
         full_text = (
             SOLAR8_PERSONA
@@ -944,6 +948,19 @@ class Solar8:
             logger.error("_compress_exchange error: %s", exc)
             return "{}"
 
+    @staticmethod
+    def _has_large_file(file: dict | None = None, files: list | None = None, threshold_bytes: int = 2000000) -> bool:
+        """Check if any file exceeds the threshold (default 2MB). Returns True if large file found."""
+        all_files = files if files else ([file] if file else [])
+        for f in all_files:
+            if f and isinstance(f, dict):
+                data = f.get("data", "")
+                data_size = len(data) if isinstance(data, str) else 0
+                if data_size > threshold_bytes:
+                    logger.info("Large file detected: %s (%d bytes, threshold %d)", f.get("name", "unknown"), data_size, threshold_bytes)
+                    return True
+        return False
+
     def _raw_inference(self, msg: str) -> str:
         """Single-turn LLM call without history or tools — used by governor utilities."""
         response = self._client.messages.create(
@@ -971,8 +988,11 @@ class Solar8:
         actual_mode = direction["mode"]
         swing_limit = direction["swing_limit"]
 
+        # Check for large files that would overflow token context
+        has_large_file = self._has_large_file(file, files)
+
         # Build mode-aware system prompt for this request
-        system_prompt = self._build_system_prompt(mode=actual_mode, role=role, history=history)
+        system_prompt = self._build_system_prompt(mode=actual_mode, role=role, history=history, has_large_file=has_large_file)
 
         logger.info(
             "🌊 PRIME DIRECTOR: %s mode | token_limit=%s | swing_limit=%d",
@@ -1080,7 +1100,10 @@ class Solar8:
         if direction["redirected"]:
             logger.warning("🚫 DoS prevented by Prime Director (stream), redirected to Nile flow")
         actual_mode = direction["mode"]
-        system_prompt = self._build_system_prompt(mode=actual_mode, role=role, history=history)
+
+        # Check for large files that would overflow token context
+        has_large_file = self._has_large_file(file, files)
+        system_prompt = self._build_system_prompt(mode=actual_mode, role=role, history=history, has_large_file=has_large_file)
 
         content = self._build_content(message, file, files)
         messages = list(history) + [{"role": "user", "content": content}]
