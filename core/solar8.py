@@ -679,16 +679,27 @@ class Solar8:
     def online(self) -> bool:
         return self._client is not None
 
-    def _build_content(self, message: str, file: dict | None = None, files: list | None = None):
-        """Build user content block, handling optional file attachment(s)."""
+    def _build_content(self, message: str, file: dict | None = None, files: list | None = None, has_large_file: bool = False):
+        """Build user content block, handling optional file attachment(s).
+
+        Args:
+            has_large_file: If True, corpus is already skipped — apply tighter size limits
+        """
         all_files = files if files else ([file] if file else [])
         if not all_files:
             return message
 
         # Size limits to prevent crashes
-        MAX_IMAGE_SIZE = 4000000  # 4MB base64
-        MAX_PDF_SIZE = 10000000   # 10MB base64
-        MAX_TEXT_SIZE = 9000000   # 9MB text content (HTML, code, etc.)
+        # When has_large_file=True (corpus skipped), use tighter limits to avoid token overflow
+        if has_large_file:
+            MAX_IMAGE_SIZE = 2000000   # 2MB base64 when corpus skipped
+            MAX_PDF_SIZE = 5000000     # 5MB base64 when corpus skipped
+            MAX_TEXT_SIZE = 1500000    # 1.5MB text when corpus skipped
+            logger.info("Large file mode: applying tighter size limits to prevent token overflow")
+        else:
+            MAX_IMAGE_SIZE = 4000000  # 4MB base64
+            MAX_PDF_SIZE = 10000000   # 10MB base64
+            MAX_TEXT_SIZE = 9000000   # 9MB text content (HTML, code, etc.)
 
         def is_file_too_large(f: dict) -> bool:
             """Check if file exceeds size limits."""
@@ -711,7 +722,11 @@ class Solar8:
 
             if is_file_too_large(f):
                 logger.warning("File too large: %s (%d bytes)", f.get("name", "unknown"), len(data) if data else 0)
-                return f"[File '{f.get('name', 'unknown')}' is too large to process. Max size limits: Images 4MB, PDFs 10MB, Text 9MB]\n\n{message}"
+                if has_large_file:
+                    limits_text = "Max size with corpus skipped: Images 2MB, PDFs 5MB, Text 1.5MB"
+                else:
+                    limits_text = "Max size: Images 4MB, PDFs 10MB, Text 9MB"
+                return f"[File '{f.get('name', 'unknown')}' is too large to process. {limits_text}]\n\n{message}"
 
             if mime.startswith("image/"):
                 # Validate image data before sending to Claude
@@ -1003,7 +1018,7 @@ class Solar8:
 
         from core.resonance_detector import detect_resonance, should_force_snapshot, extract_jragon_terms
 
-        content = self._build_content(message, file, files)
+        content = self._build_content(message, file, files, has_large_file=has_large_file)
         messages = list(history) + [{"role": "user", "content": content}]
 
         # AUTOMATIC TRIGGER 1: Query memory log every 10 exchanges
@@ -1105,7 +1120,7 @@ class Solar8:
         has_large_file = self._has_large_file(file, files)
         system_prompt = self._build_system_prompt(mode=actual_mode, role=role, history=history, has_large_file=has_large_file)
 
-        content = self._build_content(message, file, files)
+        content = self._build_content(message, file, files, has_large_file=has_large_file)
         messages = list(history) + [{"role": "user", "content": content}]
 
         while True:
