@@ -1218,6 +1218,23 @@ def elephant_read(file_id):
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/chunk-task-status/<task_id>", methods=["GET"])
+def chunk_task_status(task_id):
+    """Get status of a background chunk processing task."""
+    try:
+        from core.solar8 import _task_status
+
+        if task_id not in _task_status:
+            return jsonify({"error": "Task not found"}), 404
+
+        status = _task_status[task_id]
+        return jsonify(status), 200
+
+    except Exception as e:
+        logger.error("chunk_task_status error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
 def _get_mime_type(filename: str) -> str:
     """
     Get MIME type from filename extension.

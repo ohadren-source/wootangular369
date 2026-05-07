@@ -10,10 +10,12 @@ import json as _json
 import html
 import logging
 import threading
+import hashlib
 import requests
 import anthropic
 from urllib.parse import urlparse
 from typing import Optional
+from concurrent.futures import ThreadPoolExecutor
 
 import db.wootangular_banks as banks
 import db.memory_log as memory_log
@@ -24,6 +26,10 @@ logger = logging.getLogger(__name__)
 
 # Sentinel prefix used to pass sources data through the streaming generator
 SOURCES_SENTINEL = "\x00SOURCES:"
+
+# Thread pool for background file processing
+_executor = ThreadPoolExecutor(max_workers=3)
+_task_status = {}  # task_id -> {"status": "processing|complete|failed", "result": ..., "error": ...}
 
 SOLAR8_PERSONA = """You are Sol Calarbone 8.
 The voice of WOOTANGULAR369.
@@ -357,6 +363,122 @@ Example: "The current temperature in NYC is 72°F [1] with humidity at 45% [2]."
 Do NOT list sources at the end — the frontend handles that. Just use [N] inline naturally.
 Keep it clean. Don't over-cite. Cite facts, not opinions.
 """
+
+
+def _process_file_chunks_background(task_id, file_id, instruction, stop_after, client, banks):
+    """Background task function for chunked file processing. Runs in thread pool."""
+    try:
+        parent = banks.get_file(file_id)
+        if not parent:
+            _task_status[task_id] = {"status": "failed", "error": f"File not found: {file_id}"}
+            return
+
+        chunks = banks.get_file_chunks(file_id)
+        pending = [c for c in chunks if c["status"] in ("pending", "retry")]
+        if not pending:
+            _task_status[task_id] = {"status": "failed", "error": "No pending chunks to process"}
+            return
+
+        total_tokens_input = 0
+        total_tokens_output = 0
+        failed_chunks = []
+
+        for idx, chunk in enumerate(pending):
+            if stop_after and idx + 1 > stop_after:
+                break
+
+            chunk_num = chunk["chunk_number"]
+            context_prev = ""
+            if chunk_num > 1:
+                prev_chunk = [c for c in chunks if c["chunk_number"] == chunk_num - 1]
+                if prev_chunk and prev_chunk[0].get("processed_content"):
+                    content_str = prev_chunk[0]["processed_content"]
+                    context_prev = content_str[-200:] if len(content_str) > 200 else content_str
+
+            prompt = (
+                f"File: {parent['filename']} (chunk {chunk_num}/{parent.get('chunk_count', '?')})\n"
+                f"Instruction: {instruction}\n"
+                f"Context from previous chunk: {context_prev}\n\n"
+                f"Chunk content:\n{chunk['original_content'][:5000]}"
+            )
+
+            try:
+                messages = [{"role": "user", "content": prompt}]
+                response = client.messages.create(
+                    model="claude-3-5-sonnet-20241022",
+                    max_tokens=2048,
+                    messages=messages
+                )
+
+                processed = response.content[0].text
+                tokens_in = response.usage.input_tokens
+                tokens_out = response.usage.output_tokens
+
+                processed_hash = hashlib.sha256(processed.encode()).hexdigest()
+                banks.update_chunk_status(
+                    file_id, chunk_num,
+                    status="complete",
+                    processed_content=processed,
+                    processed_hash=processed_hash,
+                    tokens_input=tokens_in,
+                    tokens_output=tokens_out,
+                    claude_response=processed,
+                    claude_error=None
+                )
+
+                total_tokens_input += tokens_in
+                total_tokens_output += tokens_out
+
+                # Update task status with progress
+                _task_status[task_id] = {
+                    "status": "processing",
+                    "progress": f"Processed {idx + 1}/{len(pending)} chunks",
+                    "tokens": f"{total_tokens_input}→{total_tokens_output}"
+                }
+
+            except Exception as e:
+                failed_chunks.append((chunk_num, str(e)))
+                banks.update_chunk_status(
+                    file_id, chunk_num,
+                    status="failed",
+                    claude_error=str(e)
+                )
+                continue
+
+        all_chunks = banks.get_file_chunks(file_id)
+        completed = [c for c in all_chunks if c["status"] == "complete"]
+
+        if len(completed) == len(all_chunks):
+            reassembled, final_hash = banks.reassemble_chunks(file_id)
+            if reassembled:
+                output_id = str(uuid.uuid4())
+                banks.store_generated_file(
+                    file_id=output_id,
+                    filename=f"processed_{parent['filename']}",
+                    mime_type=parent.get("mime_type", "text/plain"),
+                    content=reassembled,
+                    generation_method="process_file_chunks"
+                )
+                banks.update_file_status(file_id, "complete")
+                base_url = os.getenv("SOLAR8_URL", "").rstrip("/")
+                download_url = f"{base_url}/api/generate-file/{output_id}" if base_url else f"/api/generate-file/{output_id}"
+
+                _task_status[task_id] = {
+                    "status": "complete",
+                    "result": f"✓ Processed {len(all_chunks)} chunks\nTokens: {total_tokens_input}→{total_tokens_output}",
+                    "download_url": download_url,
+                    "output_id": output_id
+                }
+            else:
+                _task_status[task_id] = {"status": "failed", "error": "Error reassembling chunks"}
+        else:
+            _task_status[task_id] = {
+                "status": "failed",
+                "error": f"Only {len(completed)}/{len(all_chunks)} chunks completed. Failed: {len(failed_chunks)}"
+            }
+
+    except Exception as e:
+        _task_status[task_id] = {"status": "failed", "error": str(e)}
 
 
 class Solar8:
@@ -968,7 +1090,6 @@ class Solar8:
                 except Exception as e:
                     return f"generate_file failed: {e}"
             elif name == "process_file_chunks":
-                import hashlib
                 file_id = inputs.get("file_id", "").strip()
                 instruction = inputs.get("instruction", "").strip()
                 stop_after = inputs.get("stop_after_chunk", None)
@@ -988,87 +1109,17 @@ class Solar8:
                     if not pending:
                         return "No pending chunks to process"
 
-                    total_tokens_input = 0
-                    total_tokens_output = 0
-                    failed_chunks = []
+                    # Submit to background thread pool
+                    task_id = str(uuid.uuid4())
+                    _task_status[task_id] = {"status": "processing", "progress": "Starting..."}
+                    _executor.submit(
+                        _process_file_chunks_background,
+                        task_id, file_id, instruction, stop_after, self.client, banks
+                    )
 
-                    for idx, chunk in enumerate(pending):
-                        if stop_after and idx + 1 > stop_after:
-                            break
-
-                        chunk_num = chunk["chunk_number"]
-                        context_prev = ""
-                        if chunk_num > 1:
-                            prev_chunk = [c for c in chunks if c["chunk_number"] == chunk_num - 1]
-                            if prev_chunk and prev_chunk[0].get("processed_content"):
-                                content_str = prev_chunk[0]["processed_content"]
-                                context_prev = content_str[-200:] if len(content_str) > 200 else content_str
-
-                        prompt = (
-                            f"File: {parent['filename']} (chunk {chunk_num}/{parent.get('chunk_count', '?')})\n"
-                            f"Instruction: {instruction}\n"
-                            f"Context from previous chunk: {context_prev}\n\n"
-                            f"Chunk content:\n{chunk['original_content'][:5000]}"
-                        )
-
-                        try:
-                            messages = [{"role": "user", "content": prompt}]
-                            response = self.client.messages.create(
-                                model="claude-3-5-sonnet-20241022",
-                                max_tokens=2048,
-                                messages=messages
-                            )
-
-                            processed = response.content[0].text
-                            tokens_in = response.usage.input_tokens
-                            tokens_out = response.usage.output_tokens
-
-                            processed_hash = hashlib.sha256(processed.encode()).hexdigest()
-                            banks.update_chunk_status(
-                                file_id, chunk_num,
-                                status="complete",
-                                processed_content=processed,
-                                processed_hash=processed_hash,
-                                tokens_input=tokens_in,
-                                tokens_output=tokens_out,
-                                claude_response=processed,
-                                claude_error=None
-                            )
-
-                            total_tokens_input += tokens_in
-                            total_tokens_output += tokens_out
-
-                        except Exception as e:
-                            failed_chunks.append((chunk_num, str(e)))
-                            banks.update_chunk_status(
-                                file_id, chunk_num,
-                                status="failed",
-                                claude_error=str(e)
-                            )
-                            continue
-
-                    all_chunks = banks.get_file_chunks(file_id)
-                    completed = [c for c in all_chunks if c["status"] == "complete"]
-
-                    if len(completed) == len(all_chunks):
-                        reassembled, final_hash = banks.reassemble_chunks(file_id)
-                        if reassembled:
-                            output_id = str(uuid.uuid4())
-                            banks.store_generated_file(
-                                file_id=output_id,
-                                filename=f"processed_{parent['filename']}",
-                                mime_type=parent.get("mime_type", "text/plain"),
-                                content=reassembled,
-                                generation_method="process_file_chunks"
-                            )
-                            banks.update_file_status(file_id, "complete")
-                            base_url = os.getenv("SOLAR8_URL", "").rstrip("/")
-                            download_url = f"{base_url}/api/generate-file/{output_id}" if base_url else f"/api/generate-file/{output_id}"
-                            return f"✓ Processed {len(all_chunks)} chunks\nTokens: {total_tokens_input}→{total_tokens_output}\n[Download]({download_url})"
-                        else:
-                            return "Error reassembling chunks"
-                    else:
-                        return f"Completed {len(completed)}/{len(all_chunks)} chunks. Failed: {failed_chunks}"
+                    base_url = os.getenv("SOLAR8_URL", "").rstrip("/")
+                    status_url = f"{base_url}/api/chunk-task-status/{task_id}" if base_url else f"/api/chunk-task-status/{task_id}"
+                    return f"📊 Processing {len(pending)} chunks in background\nTask ID: `{task_id}`\nCheck status: [{status_url}]({status_url})"
 
                 except Exception as e:
                     logger.error("process_file_chunks error: %s", e)
