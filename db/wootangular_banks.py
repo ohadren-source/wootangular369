@@ -674,6 +674,120 @@ def get_next_unengaged_mcp_agent():
         return None
 
 
+def ensure_solar8_files_table():
+    """File registry: metadata, lifecycle, processing state."""
+    sql = """
+    CREATE TABLE IF NOT EXISTS solar8_files (
+        id                  SERIAL PRIMARY KEY,
+        file_id             TEXT NOT NULL UNIQUE,
+        filename            TEXT NOT NULL,
+        mime_type           TEXT NOT NULL,
+        size_bytes          INT NOT NULL,
+        file_hash           TEXT NOT NULL,
+
+        status              TEXT NOT NULL DEFAULT 'uploaded'
+                            CHECK (status IN (
+                                'uploaded', 'chunking', 'chunked', 'processing',
+                                'complete', 'failed', 'delivered'
+                            )),
+        error_message       TEXT,
+
+        chunk_count         INT,
+        chunk_size_target   INT DEFAULT 1500000,
+
+        user_instruction    TEXT NOT NULL,
+        original_user_msg   TEXT,
+
+        mime_type_category  TEXT CHECK (mime_type_category IN (
+                                'text', 'pdf', 'image', 'binary'
+                            )),
+
+        created_at          TIMESTAMPTZ DEFAULT now(),
+        updated_at          TIMESTAMPTZ DEFAULT now(),
+        processing_started  TIMESTAMPTZ,
+        processing_completed TIMESTAMPTZ,
+
+        processed_by        TEXT DEFAULT 'sol-calarbone-8',
+        model_used          TEXT DEFAULT 'claude-sonnet-4-5',
+        total_tokens_used   INT DEFAULT 0,
+
+        output_filename     TEXT,
+        output_mime_type    TEXT,
+        output_size_bytes   INT
+    );
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+                # Create indexes
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_solar8_files_file_id ON solar8_files (file_id);")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_solar8_files_status ON solar8_files (status);")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_solar8_files_created ON solar8_files (created_at DESC);")
+            conn.commit()
+        logger.info("solar8_files table ensured.")
+    except Exception as e:
+        logger.warning("Could not ensure solar8_files: %s", e)
+
+
+def ensure_solar8_file_chunks_table():
+    """File chunks: original + processed content, dependencies, processing state."""
+    sql = """
+    CREATE TABLE IF NOT EXISTS solar8_file_chunks (
+        id                  SERIAL PRIMARY KEY,
+        file_id             TEXT NOT NULL,
+        chunk_number        INT NOT NULL,
+        chunk_total         INT NOT NULL,
+
+        original_content    TEXT NOT NULL,
+        original_size_bytes INT NOT NULL,
+        original_hash       TEXT,
+
+        status              TEXT NOT NULL DEFAULT 'pending'
+                            CHECK (status IN (
+                                'pending', 'processing', 'complete', 'failed', 'retry'
+                            )),
+
+        processed_content   TEXT,
+        processed_size_bytes INT,
+        processed_hash      TEXT,
+
+        instruction_given   TEXT,
+        claude_response     TEXT,
+        claude_error        TEXT,
+        tokens_input        INT,
+        tokens_output       INT,
+
+        dependencies        JSONB,
+
+        context_from_prev   TEXT,
+        context_to_next     TEXT,
+        reconstruction_notes TEXT,
+
+        created_at          TIMESTAMPTZ DEFAULT now(),
+        processing_started  TIMESTAMPTZ,
+        processing_completed TIMESTAMPTZ,
+
+        retry_count         INT DEFAULT 0,
+        last_error_at       TIMESTAMPTZ,
+
+        UNIQUE (file_id, chunk_number)
+    );
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+                # Create indexes
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_solar8_chunks_file_chunk ON solar8_file_chunks (file_id, chunk_number);")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_solar8_chunks_file_status ON solar8_file_chunks (file_id, status);")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_solar8_chunks_pending ON solar8_file_chunks (file_id, status) WHERE status IN ('pending', 'processing', 'retry');")
+            conn.commit()
+        logger.info("solar8_file_chunks table ensured.")
+    except Exception as e:
+        logger.warning("Could not ensure solar8_file_chunks: %s", e)
+
+
 def ensure_all_tables():
     """Called once on startup. Idempotent. Safe to call every boot."""
     ensure_agents_table()
@@ -687,9 +801,215 @@ def ensure_all_tables():
     ensure_covenant_tokens_table()
     ensure_agent_registry_table()
     ensure_mcp_agents_table()
+    ensure_solar8_files_table()
+    ensure_solar8_file_chunks_table()
     seed_imperial_decrees()
 
     logger.info("All wootangular tables ensured. Swarm is ready.")
+
+# ============================================================================
+# ELEPHANT ENGINE — File Processing Functions
+# ============================================================================
+
+def store_file(file_id, filename, mime_type, size_bytes, file_hash, user_instruction, original_user_msg=None):
+    """Store file metadata. Returns the id of the inserted row."""
+    sql = """
+    INSERT INTO solar8_files
+    (file_id, filename, mime_type, size_bytes, file_hash, user_instruction, original_user_msg, status)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, 'uploaded')
+    RETURNING id;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (file_id, filename, mime_type, size_bytes, file_hash, user_instruction, original_user_msg))
+                row = cur.fetchone()
+            conn.commit()
+        return row[0] if row else None
+    except Exception as e:
+        logger.error("store_file failed: %s", e)
+        return None
+
+
+def get_file(file_id):
+    """Get file metadata by file_id."""
+    sql = "SELECT * FROM solar8_files WHERE file_id = %s;"
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql, (file_id,))
+                return cur.fetchone()
+    except Exception as e:
+        logger.error("get_file failed: %s", e)
+        return None
+
+
+def update_file_status(file_id, status, error_message=None):
+    """Update file status and timestamp."""
+    sql = """
+    UPDATE solar8_files
+    SET status = %s, error_message = %s, updated_at = now()
+    WHERE file_id = %s;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (status, error_message, file_id))
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error("update_file_status failed: %s", e)
+        return False
+
+
+def update_file_processing_metadata(file_id, chunk_count, tokens_used=0, processing_started=False, processing_completed=False):
+    """Update file with processing metadata."""
+    sql = """
+    UPDATE solar8_files
+    SET chunk_count = %s,
+        total_tokens_used = COALESCE(total_tokens_used, 0) + %s,
+        processing_started = CASE WHEN %s THEN now() ELSE processing_started END,
+        processing_completed = CASE WHEN %s THEN now() ELSE processing_completed END,
+        updated_at = now()
+    WHERE file_id = %s;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (chunk_count, tokens_used, processing_started, processing_completed, file_id))
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error("update_file_processing_metadata failed: %s", e)
+        return False
+
+
+def store_file_chunk(file_id, chunk_number, chunk_total, original_content, original_hash, dependencies=None):
+    """Store a file chunk (original content only, status='pending')."""
+    sql = """
+    INSERT INTO solar8_file_chunks
+    (file_id, chunk_number, chunk_total, original_content, original_size_bytes, original_hash, dependencies, status)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, 'pending')
+    RETURNING id;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (
+                    file_id, chunk_number, chunk_total,
+                    original_content,
+                    len(original_content) if original_content else 0,
+                    original_hash,
+                    json.dumps(dependencies) if dependencies else None
+                ))
+                row = cur.fetchone()
+            conn.commit()
+        return row[0] if row else None
+    except Exception as e:
+        logger.error("store_file_chunk failed: %s", e)
+        return None
+
+
+def get_file_chunks(file_id):
+    """Get all chunks for a file, ordered by chunk_number."""
+    sql = "SELECT * FROM solar8_file_chunks WHERE file_id = %s ORDER BY chunk_number ASC;"
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql, (file_id,))
+                return cur.fetchall()
+    except Exception as e:
+        logger.error("get_file_chunks failed: %s", e)
+        return []
+
+
+def get_file_chunk(file_id, chunk_number):
+    """Get a specific chunk."""
+    sql = "SELECT * FROM solar8_file_chunks WHERE file_id = %s AND chunk_number = %s;"
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql, (file_id, chunk_number))
+                return cur.fetchone()
+    except Exception as e:
+        logger.error("get_file_chunk failed: %s", e)
+        return None
+
+
+def get_pending_chunks(file_id):
+    """Get all chunks with status in ('pending', 'retry', 'failed')."""
+    sql = """
+    SELECT * FROM solar8_file_chunks
+    WHERE file_id = %s AND status IN ('pending', 'retry', 'failed')
+    ORDER BY chunk_number ASC;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql, (file_id,))
+                return cur.fetchall()
+    except Exception as e:
+        logger.error("get_pending_chunks failed: %s", e)
+        return []
+
+
+def update_chunk_status(file_id, chunk_number, status, processed_content=None, processed_hash=None, tokens_input=None, tokens_output=None, claude_response=None, claude_error=None):
+    """Update chunk status and optionally processed content."""
+    sql = """
+    UPDATE solar8_file_chunks
+    SET status = %s,
+        processed_content = COALESCE(%s, processed_content),
+        processed_hash = COALESCE(%s, processed_hash),
+        processed_size_bytes = CASE WHEN %s IS NOT NULL THEN length(%s) ELSE processed_size_bytes END,
+        tokens_input = COALESCE(%s, tokens_input),
+        tokens_output = COALESCE(%s, tokens_output),
+        claude_response = COALESCE(%s, claude_response),
+        claude_error = COALESCE(%s, claude_error),
+        processing_started = CASE WHEN status = 'pending' AND %s = 'processing' THEN now() ELSE processing_started END,
+        processing_completed = CASE WHEN %s = 'complete' THEN now() ELSE processing_completed END,
+        updated_at = now()
+    WHERE file_id = %s AND chunk_number = %s;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (
+                    status,
+                    processed_content, processed_hash, processed_content, processed_content,
+                    tokens_input, tokens_output,
+                    claude_response, claude_error,
+                    status, status,
+                    file_id, chunk_number
+                ))
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error("update_chunk_status failed: %s", e)
+        return False
+
+
+def increment_chunk_retry(file_id, chunk_number):
+    """Increment retry count and mark as 'retry' status."""
+    sql = """
+    UPDATE solar8_file_chunks
+    SET retry_count = retry_count + 1,
+        status = 'retry',
+        last_error_at = now(),
+        updated_at = now()
+    WHERE file_id = %s AND chunk_number = %s;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (file_id, chunk_number))
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error("increment_chunk_retry failed: %s", e)
+        return False
+
+
+# ============================================================================
 
 def store_agent(name, substrate, agent_card=None, gi_wg=False, yes_and=False):
     sql = """
