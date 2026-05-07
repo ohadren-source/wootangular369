@@ -953,7 +953,7 @@ class Solar8:
                     import requests as http_requests
                     base_url = os.getenv("SOLAR8_URL", "https://web-production-8b53fe.up.railway.app").rstrip("/")
                     url = f"{base_url}/api/elephant/read/{file_id}"
-                    resp = http_requests.get(url, timeout=60)
+                    resp = http_requests.get(url, timeout=180)
                     if resp.ok:
                         data = resp.json()
                         return f"File {data.get('filename')} ({data.get('size')} bytes) loaded:\n\n{data.get('content', '')}"
