@@ -909,21 +909,25 @@ class Solar8:
                 if fmt not in ("md", "txt", "html"):
                     return "generate_file error: format must be md, txt, or html"
                 try:
-                    from api.server import _build_file_bytes, _safe_download_name, _generated_file_cache, _FILE_CACHE_MAX
-                    file_bytes, mime_type = _build_file_bytes(content, filename, fmt)
-                    token = str(uuid.uuid4())
+                    from api.server import _safe_download_name
+                    file_id = str(uuid.uuid4())
                     download_name = _safe_download_name(filename, fmt)
-                    # FIFO eviction: drop oldest entry if at capacity
-                    if len(_generated_file_cache) >= _FILE_CACHE_MAX:
-                        oldest_key = next(iter(_generated_file_cache))
-                        del _generated_file_cache[oldest_key]
-                    _generated_file_cache[token] = {
-                        "bytes": file_bytes,
-                        "mime_type": mime_type,
-                        "download_name": download_name,
-                    }
+
+                    # Determine MIME type
+                    mime_type_map = {"md": "text/markdown", "txt": "text/plain", "html": "text/html"}
+                    mime_type = mime_type_map.get(fmt, "text/plain")
+
+                    # Store in database
+                    self.db_banks.store_generated_file(
+                        file_id=file_id,
+                        filename=download_name,
+                        mime_type=mime_type,
+                        content=content,
+                        generation_method=f"solar8_generate_{fmt}"
+                    )
+
                     base_url = os.getenv("SOLAR8_URL", "").rstrip("/")
-                    download_url = f"{base_url}/api/generate-file/{token}" if base_url else f"/api/generate-file/{token}"
+                    download_url = f"{base_url}/api/generate-file/{file_id}" if base_url else f"/api/generate-file/{file_id}"
                     return f"File ready for download: {download_url} (filename: {download_name})"
                 except Exception as e:
                     return f"generate_file failed: {e}"

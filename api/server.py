@@ -1063,18 +1063,23 @@ def download_file():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/generate-file/<token>")
-def serve_generated_file(token):
-    """Serve a cached generated file by token."""
+@app.route("/api/generate-file/<file_id>")
+def serve_generated_file(file_id):
+    """Serve a generated file from the database."""
     try:
-        file_data = _generated_file_cache.get(token)
+        file_data = banks.get_generated_file(file_id)
         if not file_data:
-            return jsonify({"error": "File token expired or invalid"}), 404
-        buffer = BytesIO(file_data["bytes"])
+            return jsonify({"error": "File not found or expired"}), 404
+
+        # Mark as downloaded and update metadata
+        banks.mark_file_downloaded(file_id)
+
+        # Return file with original mime type
+        buffer = BytesIO(file_data["content"].encode("utf-8") if isinstance(file_data["content"], str) else file_data["content"])
         return send_file(
             buffer,
             as_attachment=True,
-            download_name=file_data["download_name"],
+            download_name=file_data["filename"],
             mimetype=file_data["mime_type"]
         )
     except Exception as e:
@@ -1113,10 +1118,8 @@ def _get_mime_type(filename: str) -> str:
 
 # ============================================================================
 # FILE GENERATION SUPPORT — Used by Solar8.generate_file tool
+# Files now stored in solar8_generated_files table (see db/wootangular_banks.py)
 # ============================================================================
-
-_generated_file_cache = {}
-_FILE_CACHE_MAX = 100
 
 
 def _build_file_bytes(content: str, filename: str, fmt: str):

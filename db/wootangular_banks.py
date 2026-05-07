@@ -788,6 +788,102 @@ def ensure_solar8_file_chunks_table():
         logger.warning("Could not ensure solar8_file_chunks: %s", e)
 
 
+def ensure_solar8_generated_files_table():
+    """Generated files table: files Sol creates (downloads, outputs, etc.)."""
+    sql = """
+    CREATE TABLE IF NOT EXISTS solar8_generated_files (
+        id                  SERIAL PRIMARY KEY,
+        file_id             TEXT NOT NULL UNIQUE,
+        filename            TEXT NOT NULL,
+        mime_type           TEXT NOT NULL,
+        content             TEXT NOT NULL,
+        size_bytes          INT NOT NULL,
+        file_hash           TEXT,
+
+        generated_by        TEXT DEFAULT 'sol-calarbone-8',
+        generation_method   TEXT,
+
+        created_at          TIMESTAMPTZ DEFAULT now(),
+        expires_at          TIMESTAMPTZ DEFAULT (now() + interval '7 days'),
+        downloaded          BOOLEAN DEFAULT FALSE,
+        downloaded_at       TIMESTAMPTZ,
+        download_count      INT DEFAULT 0,
+
+        INDEX idx_generated_file_id (file_id),
+        INDEX idx_generated_filename (filename),
+        INDEX idx_generated_created (created_at DESC)
+    );
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+            conn.commit()
+        logger.info("solar8_generated_files table ensured.")
+    except Exception as e:
+        logger.warning("Could not ensure solar8_generated_files: %s", e)
+
+
+def store_generated_file(file_id, filename, mime_type, content, generation_method="unknown"):
+    """Store a generated file (for downloads, outputs, etc.)."""
+    sql = """
+    INSERT INTO solar8_generated_files
+    (file_id, filename, mime_type, content, size_bytes, file_hash, generation_method)
+    VALUES (%s, %s, %s, %s, %s, %s, %s)
+    RETURNING id;
+    """
+    try:
+        file_hash = hashlib.sha256(content.encode() if isinstance(content, str) else content).hexdigest()
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (
+                    file_id, filename, mime_type, content,
+                    len(content) if isinstance(content, str) else len(content),
+                    file_hash,
+                    generation_method
+                ))
+                row = cur.fetchone()
+            conn.commit()
+        return row[0] if row else None
+    except Exception as e:
+        logger.error("store_generated_file failed: %s", e)
+        return None
+
+
+def get_generated_file(file_id):
+    """Get generated file by file_id."""
+    sql = "SELECT * FROM solar8_generated_files WHERE file_id = %s;"
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql, (file_id,))
+                return cur.fetchone()
+    except Exception as e:
+        logger.error("get_generated_file failed: %s", e)
+        return None
+
+
+def mark_file_downloaded(file_id):
+    """Mark a generated file as downloaded."""
+    sql = """
+    UPDATE solar8_generated_files
+    SET downloaded = TRUE,
+        downloaded_at = now(),
+        download_count = download_count + 1,
+        expires_at = now() + interval '7 days'
+    WHERE file_id = %s;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (file_id,))
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error("mark_file_downloaded failed: %s", e)
+        return False
+
+
 def ensure_all_tables():
     """Called once on startup. Idempotent. Safe to call every boot."""
     ensure_agents_table()
@@ -803,6 +899,7 @@ def ensure_all_tables():
     ensure_mcp_agents_table()
     ensure_solar8_files_table()
     ensure_solar8_file_chunks_table()
+    ensure_solar8_generated_files_table()
     seed_imperial_decrees()
 
     logger.info("All wootangular tables ensured. Swarm is ready.")
