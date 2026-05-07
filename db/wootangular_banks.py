@@ -12,14 +12,58 @@ import logging
 import hashlib
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from psycopg2 import pool
 
 logger = logging.getLogger(__name__)
 
+# Connection pool — initialized on first use
+_db_pool = None
+
+def _init_pool():
+    """Initialize connection pool (lazy initialization)."""
+    global _db_pool
+    if _db_pool is None:
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            raise RuntimeError("DATABASE_URL is not set.")
+        _db_pool = pool.SimpleConnectionPool(
+            minconn=2,
+            maxconn=10,
+            dsn=db_url,
+            connect_timeout=5
+        )
+    return _db_pool
+
+class PooledConnectionWrapper:
+    """Wrapper that returns pooled connection to pool on context exit."""
+    def __init__(self, conn, pool):
+        self.conn = conn
+        self.pool = pool
+
+    def __enter__(self):
+        return self.conn
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Commit/rollback transaction, then return connection to pool."""
+        try:
+            if exc_type:
+                self.conn.rollback()
+            else:
+                self.conn.commit()
+        finally:
+            if self.conn:
+                self.pool.putconn(self.conn)
+        return False
+
+    def cursor(self, *args, **kwargs):
+        """Pass-through to connection cursor."""
+        return self.conn.cursor(*args, **kwargs)
+
 def get_db_conn():
-    db_url = os.getenv("DATABASE_URL")
-    if not db_url:
-        raise RuntimeError("DATABASE_URL is not set.")
-    return psycopg2.connect(db_url)
+    """Get a pooled connection. Use with context manager for proper cleanup."""
+    _pool = _init_pool()
+    conn = _pool.getconn()
+    return PooledConnectionWrapper(conn, _pool)
 
 def ensure_agents_table():
     sql = """
