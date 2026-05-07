@@ -9,6 +9,8 @@ import json
 import uuid
 import logging
 import threading
+import zipfile
+from datetime import datetime
 import requests as http_requests
 from flask import Flask, request, jsonify, send_from_directory, Response, send_file
 from flask_cors import CORS
@@ -1084,6 +1086,45 @@ def serve_generated_file(file_id):
         )
     except Exception as e:
         logger.error("serve_generated_file error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/generate-files/download-all", methods=["POST"])
+def download_all_files():
+    """Download multiple generated files as a zip archive."""
+    try:
+        data = request.get_json() or {}
+        file_ids = data.get("file_ids", [])
+
+        if not file_ids or not isinstance(file_ids, list):
+            return jsonify({"error": "file_ids must be a non-empty list"}), 400
+
+        # Create zip in memory
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for file_id in file_ids:
+                file_data = banks.get_generated_file(file_id)
+                if file_data:
+                    # Mark as downloaded
+                    banks.mark_file_downloaded(file_id)
+                    # Add to zip
+                    content = file_data["content"]
+                    if isinstance(content, str):
+                        content = content.encode("utf-8")
+                    zip_file.writestr(file_data["filename"], content)
+
+        zip_buffer.seek(0)
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        zip_filename = f"sol_files_{timestamp}.zip"
+
+        return send_file(
+            zip_buffer,
+            as_attachment=True,
+            download_name=zip_filename,
+            mimetype="application/zip"
+        )
+    except Exception as e:
+        logger.error("download_all_files error: %s", e)
         return jsonify({"error": str(e)}), 500
 
 
