@@ -1155,7 +1155,11 @@
         const data = await res.json();
         if (res.ok && data.file_id) {
           logDebug('ELEPHANT', 'Upload complete: ' + data.file_id, false, true);
-          addThinking('✓ ' + file.name + ' chunked and stored. Ready to process.');
+          // Auto-trigger Sol to process the uploaded file
+          const processingMsg = 'Process ELEPHANT ENGINE file: ' + file.name + ' (file_id: ' + data.file_id + ')';
+          input.value = processingMsg;
+          input.style.height = 'auto';
+          sendMessage();
         } else {
           logDebug('ELEPHANT', 'Upload failed: ' + (data.error || 'unknown error'), true);
         }
