@@ -1606,18 +1606,34 @@
             const found = [];
             let m;
             while ((m = pattern.exec(reply)) !== null) {
-              // Extract filename from context around the URL (within 200 chars before/after)
+              // Extract filename from context around the URL (within 300 chars before/after)
               const urlIndex = m.index;
-              const contextStart = Math.max(0, urlIndex - 200);
-              const contextEnd = Math.min(reply.length, urlIndex + m[0].length + 200);
+              const contextStart = Math.max(0, urlIndex - 300);
+              const contextEnd = Math.min(reply.length, urlIndex + m[0].length + 300);
               const context = reply.substring(contextStart, contextEnd);
 
               let filename = null;
-              // Try to match "filename: myfile.md" or "filename:myfile.md" in the context
-              // Match everything after "filename:" up to closing paren or end
-              const fnMatch = context.match(/filename[:\s]+([^\)]+?)(?:\)|$)/i);
+
+              // Method 1: Try "filename: myfile.txt" pattern
+              let fnMatch = context.match(/filename[:\s]+([^\)]+?)(?:\)|,|$)/i);
               if (fnMatch && fnMatch[1]) {
                 filename = fnMatch[1].trim();
+              }
+
+              // Method 2: Try "Download X.txt" or "[X.txt]" pattern around the URL
+              if (!filename) {
+                fnMatch = context.match(/download\s+([a-zA-Z0-9\s\-\._\(\)]+\.\w+)/i);
+                if (fnMatch && fnMatch[1]) {
+                  filename = fnMatch[1].trim();
+                }
+              }
+
+              // Method 3: Try markdown link pattern "[filename](url)"
+              if (!filename) {
+                fnMatch = context.match(/\[([a-zA-Z0-9\s\-\._\(\)]+\.\w+)\]/);
+                if (fnMatch && fnMatch[1]) {
+                  filename = fnMatch[1].trim();
+                }
               }
 
               if (!filename) {
