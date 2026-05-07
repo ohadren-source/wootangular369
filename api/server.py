@@ -359,10 +359,21 @@ def chat():
     user_role = _resolve_user_role(data)
     file = data.get("file") or None
     files = data.get("files", [])
+
+    # Validate file sizes before processing
     if files:
         logger.info("[SOLAR8] Chat request with %d file(s)", len(files))
+        for f in files:
+            data_size = len(f.get("data", "")) if isinstance(f.get("data"), str) else 0
+            mime = f.get("mime_type", "")
+            if data_size > 20000000:  # 20MB hard limit
+                return jsonify({
+                    "response": f"File '{f.get('name', 'unknown')}' is too large ({data_size // 1000000}MB). Maximum file size is 20MB.",
+                    "governor": True,
+                }), 200
         if not file:
             file = files[0]
+
     if not message:
         return jsonify({"status": "error", "message": "message required."}), 400
     try:
@@ -381,6 +392,13 @@ def chat():
             daemon=True,
         ).start()
         return jsonify({"status": "ok", "response": reply_text, "agent": "Sol Calarbone 8", "mode": mode})
+    except ValueError as e:
+        # Claude API token limit or message size errors
+        logger.error("[SOLAR8] ValueError (likely size limit): %s", e)
+        return jsonify({
+            "response": "Request too large for processing. Try removing some files or reducing file sizes.",
+            "governor": True,
+        }), 200
     except Exception as e:
         logger.error("[SOLAR8] Chat crash caught: %s", e)
         return jsonify({

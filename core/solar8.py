@@ -680,10 +680,34 @@ class Solar8:
         all_files = files if files else ([file] if file else [])
         if not all_files:
             return message
+
+        # Size limits to prevent crashes
+        MAX_IMAGE_SIZE = 4000000  # 4MB base64
+        MAX_PDF_SIZE = 10000000   # 10MB base64
+        MAX_TEXT_SIZE = 500000    # 500KB text content
+
+        def is_file_too_large(f: dict) -> bool:
+            """Check if file exceeds size limits."""
+            mime = f.get("mime_type", "")
+            data = f.get("data", "")
+            data_size = len(data) if isinstance(data, str) else 0
+
+            if mime.startswith("image/"):
+                return data_size > MAX_IMAGE_SIZE
+            elif mime == "application/pdf":
+                return data_size > MAX_PDF_SIZE
+            elif f.get("is_text"):
+                return data_size > MAX_TEXT_SIZE
+            return False
+
         if len(all_files) == 1:
             f = all_files[0]
             mime = f.get("mime_type", "")
             data = f.get("data", "")
+
+            if is_file_too_large(f):
+                logger.warning("File too large: %s (%d bytes)", f.get("name", "unknown"), len(data) if data else 0)
+                return f"[File '{f.get('name', 'unknown')}' is too large to process. Max size limits: Images 4MB, PDFs 10MB, Text 500KB]\n\n{message}"
 
             if mime.startswith("image/"):
                 # Validate image data before sending to Claude
@@ -719,21 +743,39 @@ class Solar8:
                     {"type": "text", "text": message},
                 ]
             elif f.get("is_text"):
-                return f"[FILE: {f['name']}]\n{f['data']}\n\n{message}"
+                # Truncate very long text files
+                text_data = f['data']
+                if len(text_data) > MAX_TEXT_SIZE:
+                    text_data = text_data[:MAX_TEXT_SIZE] + f"\n\n[... truncated, file too long ...]"
+                    logger.warning("Text file truncated: %s", f.get("name", "unknown"))
+                return f"[FILE: {f['name']}]\n{text_data}\n\n{message}"
             return message
         blocks = []
         text_prefix = ""
         for f in all_files:
+            if is_file_too_large(f):
+                logger.warning("Skipping oversized file in batch: %s", f.get("name", "unknown"))
+                text_prefix += f"[FILE SKIPPED: '{f.get('name', 'unknown')}' too large to process]\n"
+                continue
+
             mime = f.get("mime_type", "")
             if mime.startswith("image/"):
-                blocks.append({
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": mime,
-                        "data": f["data"],
-                    },
-                })
+                try:
+                    import base64
+                    data = f.get("data", "")
+                    if isinstance(data, str):
+                        base64.b64decode(data[:100])
+                    blocks.append({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": mime,
+                            "data": data,
+                        },
+                    })
+                except Exception as e:
+                    logger.warning("Invalid image in batch: %s", e)
+                    text_prefix += f"[FILE SKIPPED: '{f.get('name', 'unknown')}' invalid format]\n"
             elif mime == "application/pdf":
                 blocks.append({
                     "type": "document",
@@ -744,7 +786,11 @@ class Solar8:
                     },
                 })
             elif f.get("is_text"):
-                text_prefix += f"[FILE: {f['name']}]\n{f['data']}\n\n"
+                text_data = f['data']
+                if len(text_data) > MAX_TEXT_SIZE:
+                    text_data = text_data[:MAX_TEXT_SIZE] + "\n[... truncated ...]"
+                text_prefix += f"[FILE: {f['name']}]\n{text_data}\n\n"
+
         if text_prefix:
             blocks.append({"type": "text", "text": text_prefix + message})
         else:
