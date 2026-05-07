@@ -483,6 +483,20 @@ class Solar8:
                 },
                 "required": ["content", "filename", "format"]
             }
+        },
+        {
+            "name": "read_elephant_file",
+            "description": "Read the content of a file stored in ELEPHANT ENGINE by file_id. Use this to retrieve, edit, and process large files that were uploaded.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "file_id": {
+                        "type": "string",
+                        "description": "The file_id returned when the file was uploaded to ELEPHANT ENGINE (UUID format)"
+                    }
+                },
+                "required": ["file_id"]
+            }
         }
     ]
 
@@ -931,6 +945,21 @@ class Solar8:
                     return f"[{download_name}]({download_url})"
                 except Exception as e:
                     return f"generate_file failed: {e}"
+            elif name == "read_elephant_file":
+                file_id = inputs.get("file_id")
+                if not file_id:
+                    return "read_elephant_file error: file_id required"
+                try:
+                    import requests as http_requests
+                    base_url = os.getenv("SOLAR8_URL", "").rstrip("/")
+                    url = f"{base_url}/api/elephant/read/{file_id}" if base_url else f"/api/elephant/read/{file_id}"
+                    resp = http_requests.get(url, timeout=10)
+                    if resp.ok:
+                        data = resp.json()
+                        return f"File {data.get('filename')} ({data.get('size')} bytes) loaded:\n\n{data.get('content', '')}"
+                    return f"read_elephant_file error: {resp.status_code} {resp.text}"
+                except Exception as e:
+                    return f"read_elephant_file error: {e}"
             else:
                 return f"Unknown tool: {name}"
         except Exception as e:

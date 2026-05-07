@@ -1174,6 +1174,31 @@ def elephant_upload():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/elephant/read/<file_id>", methods=["GET"])
+def elephant_read(file_id):
+    """Read file content from ELEPHANT ENGINE storage by file_id."""
+    try:
+        file_data = banks.get_generated_file(file_id)
+        if not file_data:
+            return jsonify({"error": "File not found"}), 404
+
+        content = file_data.get("content")
+        if isinstance(content, bytes):
+            content = content.decode("utf-8", errors="replace")
+
+        return jsonify({
+            "status": "ok",
+            "file_id": file_id,
+            "filename": file_data.get("filename"),
+            "mime_type": file_data.get("mime_type"),
+            "content": content,
+            "size": len(content)
+        }), 200
+    except Exception as e:
+        logger.error("elephant_read error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
 def _get_mime_type(filename: str) -> str:
     """
     Get MIME type from filename extension.
