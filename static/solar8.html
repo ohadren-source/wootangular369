@@ -1065,10 +1065,15 @@
         const reader = new FileReader();
         reader.onload = (e) => {
           const data = e.target.result;
-          const dataStr = isText ? data : (data.split(',')[1] || data);
+          let dataStr = isText ? data : (data.split(',')[1] || data);
           if (dataStr.length > maxSize * 1.3) {
-            logDebug('FILE', f.name + ': encoded size too large. Try a smaller file.', true);
-            return;
+            dataStr = dataStr.substring(0, maxSize);
+            if (!isText) {
+              while (dataStr.length % 4 !== 0) {
+                dataStr = dataStr.slice(0, -1);
+              }
+            }
+            logDebug('FILE', f.name + ': truncated to fit size limit.', true);
           }
           const fileObj = isText
             ? { name: f.name, mime_type: f.type || 'text/plain', data: dataStr, is_text: true }
@@ -1675,10 +1680,13 @@
           const reader = new FileReader();
           reader.onload = (ev) => {
             const dataUrl = ev.target.result;
-            const dataStr = dataUrl.split(',')[1] || dataUrl;
+            let dataStr = dataUrl.split(',')[1] || dataUrl;
             if (dataStr.length > 15000000) {
-              logDebug('IMAGE', 'Encoded image too large. Try compressing first.', true);
-              return;
+              dataStr = dataStr.substring(0, 15000000);
+              while (dataStr.length % 4 !== 0) {
+                dataStr = dataStr.slice(0, -1);
+              }
+              logDebug('IMAGE', 'Image truncated to fit size limit.', true);
             }
             const fileObj = { name: fileName, mime_type: file.type || 'image/png', data: dataStr, is_text: false, dataUrl: dataUrl };
             pendingFiles.push(fileObj);
