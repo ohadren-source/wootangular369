@@ -1614,9 +1614,10 @@
 
               let filename = null;
               // Try to match "filename: myfile.md" or "filename:myfile.md" in the context
-              const fnMatch = context.match(/filename[:\s]+([^\s,\)\.]+(?:\.[a-z0-9]+)?)/i);
+              // Match everything after "filename:" up to closing paren or end
+              const fnMatch = context.match(/filename[:\s]+([^\)]+?)(?:\)|$)/i);
               if (fnMatch && fnMatch[1]) {
-                filename = fnMatch[1];
+                filename = fnMatch[1].trim();
               }
 
               if (!filename) {
