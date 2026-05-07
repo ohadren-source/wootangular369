@@ -994,17 +994,26 @@ def get_file(file_id):
         return None
 
 
-def update_file_status(file_id, status, error_message=None):
-    """Update file status and timestamp."""
-    sql = """
-    UPDATE solar8_files
-    SET status = %s, error_message = %s, updated_at = now()
-    WHERE file_id = %s;
-    """
+def update_file_status(file_id, status, error_message=None, chunk_count=None):
+    """Update file status and optionally chunk_count."""
+    if chunk_count is not None:
+        sql = """
+        UPDATE solar8_files
+        SET status = %s, error_message = %s, chunk_count = %s, updated_at = now()
+        WHERE file_id = %s;
+        """
+        params = (status, error_message, chunk_count, file_id)
+    else:
+        sql = """
+        UPDATE solar8_files
+        SET status = %s, error_message = %s, updated_at = now()
+        WHERE file_id = %s;
+        """
+        params = (status, error_message, file_id)
     try:
         with get_db_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(sql, (status, error_message, file_id))
+                cur.execute(sql, params)
             conn.commit()
         return True
     except Exception as e:
@@ -1157,6 +1166,74 @@ def increment_chunk_retry(file_id, chunk_number):
     except Exception as e:
         logger.error("increment_chunk_retry failed: %s", e)
         return False
+
+
+def reassemble_chunks(file_id):
+    """
+    Reassemble all completed chunks into final content.
+    Trims 10% overlap from each chunk (except first/last).
+    Returns: (final_content, final_hash) or (None, None) on error
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT chunk_number, processed_content FROM solar8_file_chunks WHERE file_id = %s ORDER BY chunk_number",
+                    (file_id,)
+                )
+                chunks = cur.fetchall()
+
+        if not chunks:
+            logger.warning("reassemble_chunks: No chunks found for file %s", file_id)
+            return None, None
+
+        final = ""
+        overlap_size = 150  # ~10% of average HTML chunk
+        for i, chunk in enumerate(chunks):
+            content = chunk["processed_content"] or ""
+            if i > 0 and len(content) > overlap_size:
+                content = content[overlap_size:]
+            final += content
+
+        final_hash = hashlib.sha256(final.encode()).hexdigest()
+        return final, final_hash
+    except Exception as e:
+        logger.error("reassemble_chunks failed: %s", e)
+        return None, None
+
+
+def get_chunk_context(file_id, chunk_number):
+    """
+    Get context from adjacent chunks for prompt injection.
+    Returns: (context_from_prev, note_for_next)
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                context_prev = ""
+                if chunk_number > 1:
+                    cur.execute(
+                        "SELECT processed_content FROM solar8_file_chunks WHERE file_id = %s AND chunk_number = %s",
+                        (file_id, chunk_number - 1)
+                    )
+                    prev = cur.fetchone()
+                    if prev and prev.get("processed_content"):
+                        content = prev["processed_content"]
+                        context_prev = content[-500:] if len(content) > 500 else content
+
+                cur.execute(
+                    "SELECT dependencies FROM solar8_file_chunks WHERE file_id = %s AND chunk_number = %s",
+                    (file_id, chunk_number)
+                )
+                curr = cur.fetchone()
+                note_for_next = ""
+                if curr and curr.get("dependencies"):
+                    note_for_next = str(curr["dependencies"])
+
+                return context_prev, note_for_next
+    except Exception as e:
+        logger.error("get_chunk_context failed: %s", e)
+        return "", ""
 
 
 # ============================================================================

@@ -485,6 +485,28 @@ class Solar8:
             }
         },
         {
+            "name": "process_file_chunks",
+            "description": "Process a large uploaded file chunk-by-chunk for editing/analysis. First upload the file via /api/elephant/upload endpoint, then call this tool with the file_id returned.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "file_id": {
+                        "type": "string",
+                        "description": "UUID returned from /api/elephant/upload endpoint"
+                    },
+                    "instruction": {
+                        "type": "string",
+                        "description": "What to do to the file (e.g., 'Add comments', 'Fix formatting', 'Extract metadata')"
+                    },
+                    "stop_after_chunk": {
+                        "type": "integer",
+                        "description": "Optional: Stop processing after this chunk number (for testing). Default: process all chunks."
+                    }
+                },
+                "required": ["file_id", "instruction"]
+            }
+        },
+        {
             "name": "read_elephant_file",
             "description": "Read the content of a file stored in ELEPHANT ENGINE by file_id. Use this to retrieve, edit, and process large files that were uploaded.",
             "input_schema": {
@@ -945,6 +967,112 @@ class Solar8:
                     return f"[{download_name}]({download_url})"
                 except Exception as e:
                     return f"generate_file failed: {e}"
+            elif name == "process_file_chunks":
+                import hashlib
+                file_id = inputs.get("file_id", "").strip()
+                instruction = inputs.get("instruction", "").strip()
+                stop_after = inputs.get("stop_after_chunk", None)
+
+                if not file_id or not instruction:
+                    return "process_file_chunks error: file_id and instruction are required"
+
+                try:
+                    parent = banks.get_file(file_id)
+                    if not parent:
+                        return f"File not found: {file_id}"
+                    if parent["status"] != "chunked":
+                        return f"File status is {parent['status']}, expected 'chunked'. Ensure file was uploaded via /api/elephant/upload."
+
+                    chunks = banks.get_file_chunks(file_id)
+                    pending = [c for c in chunks if c["status"] in ("pending", "retry")]
+                    if not pending:
+                        return "No pending chunks to process"
+
+                    total_tokens_input = 0
+                    total_tokens_output = 0
+                    failed_chunks = []
+
+                    for idx, chunk in enumerate(pending):
+                        if stop_after and idx + 1 > stop_after:
+                            break
+
+                        chunk_num = chunk["chunk_number"]
+                        context_prev = ""
+                        if chunk_num > 1:
+                            prev_chunk = [c for c in chunks if c["chunk_number"] == chunk_num - 1]
+                            if prev_chunk and prev_chunk[0].get("processed_content"):
+                                content_str = prev_chunk[0]["processed_content"]
+                                context_prev = content_str[-200:] if len(content_str) > 200 else content_str
+
+                        prompt = (
+                            f"File: {parent['filename']} (chunk {chunk_num}/{parent.get('chunk_count', '?')})\n"
+                            f"Instruction: {instruction}\n"
+                            f"Context from previous chunk: {context_prev}\n\n"
+                            f"Chunk content:\n{chunk['original_content'][:5000]}"
+                        )
+
+                        try:
+                            messages = [{"role": "user", "content": prompt}]
+                            response = self.client.messages.create(
+                                model="claude-3-5-sonnet-20241022",
+                                max_tokens=2048,
+                                messages=messages
+                            )
+
+                            processed = response.content[0].text
+                            tokens_in = response.usage.input_tokens
+                            tokens_out = response.usage.output_tokens
+
+                            processed_hash = hashlib.sha256(processed.encode()).hexdigest()
+                            banks.update_chunk_status(
+                                file_id, chunk_num,
+                                status="complete",
+                                processed_content=processed,
+                                processed_hash=processed_hash,
+                                tokens_input=tokens_in,
+                                tokens_output=tokens_out,
+                                claude_response=processed,
+                                claude_error=None
+                            )
+
+                            total_tokens_input += tokens_in
+                            total_tokens_output += tokens_out
+
+                        except Exception as e:
+                            failed_chunks.append((chunk_num, str(e)))
+                            banks.update_chunk_status(
+                                file_id, chunk_num,
+                                status="failed",
+                                claude_error=str(e)
+                            )
+                            continue
+
+                    all_chunks = banks.get_file_chunks(file_id)
+                    completed = [c for c in all_chunks if c["status"] == "complete"]
+
+                    if len(completed) == len(all_chunks):
+                        reassembled, final_hash = banks.reassemble_chunks(file_id)
+                        if reassembled:
+                            output_id = str(uuid.uuid4())
+                            banks.store_generated_file(
+                                file_id=output_id,
+                                filename=f"processed_{parent['filename']}",
+                                mime_type=parent.get("mime_type", "text/plain"),
+                                content=reassembled,
+                                generation_method="process_file_chunks"
+                            )
+                            banks.update_file_status(file_id, "complete")
+                            base_url = os.getenv("SOLAR8_URL", "").rstrip("/")
+                            download_url = f"{base_url}/api/generate-file/{output_id}" if base_url else f"/api/generate-file/{output_id}"
+                            return f"✓ Processed {len(all_chunks)} chunks\nTokens: {total_tokens_input}→{total_tokens_output}\n[Download]({download_url})"
+                        else:
+                            return "Error reassembling chunks"
+                    else:
+                        return f"Completed {len(completed)}/{len(all_chunks)} chunks. Failed: {failed_chunks}"
+
+                except Exception as e:
+                    logger.error("process_file_chunks error: %s", e)
+                    return f"process_file_chunks failed: {e}"
             elif name == "read_elephant_file":
                 file_id = inputs.get("file_id")
                 if not file_id:
