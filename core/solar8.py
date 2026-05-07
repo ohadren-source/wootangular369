@@ -955,8 +955,10 @@ class Solar8:
                     url = f"{base_url}/api/elephant/read/{file_id}"
                     resp = http_requests.get(url, timeout=180)
                     if resp.ok:
-                        data = resp.json()
-                        return f"File {data.get('filename')} ({data.get('size')} bytes) loaded:\n\n{data.get('content', '')}"
+                        filename = resp.headers.get("Content-Disposition", "").split("filename=")[-1].strip('"') or "file"
+                        size = len(resp.content)
+                        content = resp.text if resp.headers.get("content-type", "").startswith("text/") else resp.content.decode("utf-8", errors="replace")
+                        return f"File {filename} ({size} bytes) loaded:\n\n{content}"
                     return f"read_elephant_file error: {resp.status_code} {resp.text}"
                 except Exception as e:
                     return f"read_elephant_file error: {e}"
