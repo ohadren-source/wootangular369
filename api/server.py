@@ -1183,8 +1183,20 @@ def elephant_read(file_id):
             return jsonify({"error": "File not found"}), 404
 
         content = file_data.get("content")
+
+        # Handle PostgreSQL bytea hex encoding
         if isinstance(content, str):
-            content = content.encode("utf-8")
+            try:
+                # Try to decode from hex (PostgreSQL bytea returns hex)
+                content = bytes.fromhex(content)
+            except (ValueError, AttributeError):
+                # If not hex, assume it's a string
+                content = content.encode("utf-8")
+        elif isinstance(content, bytes):
+            # Already bytes, use as-is
+            pass
+        else:
+            return jsonify({"error": "Invalid content type"}), 500
 
         mime_type = file_data.get("mime_type", "application/octet-stream")
         filename = file_data.get("filename", "download")
