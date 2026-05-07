@@ -790,7 +790,7 @@ def ensure_solar8_file_chunks_table():
 
 def ensure_solar8_generated_files_table():
     """Generated files table: files Sol creates (downloads, outputs, etc.)."""
-    sql = """
+    create_table_sql = """
     CREATE TABLE IF NOT EXISTS solar8_generated_files (
         id                  SERIAL PRIMARY KEY,
         file_id             TEXT NOT NULL UNIQUE,
@@ -807,17 +807,25 @@ def ensure_solar8_generated_files_table():
         expires_at          TIMESTAMPTZ DEFAULT (now() + interval '7 days'),
         downloaded          BOOLEAN DEFAULT FALSE,
         downloaded_at       TIMESTAMPTZ,
-        download_count      INT DEFAULT 0,
-
-        INDEX idx_generated_file_id (file_id),
-        INDEX idx_generated_filename (filename),
-        INDEX idx_generated_created (created_at DESC)
+        download_count      INT DEFAULT 0
     );
     """
+
+    index_sqls = [
+        "CREATE INDEX IF NOT EXISTS idx_generated_file_id ON solar8_generated_files (file_id);",
+        "CREATE INDEX IF NOT EXISTS idx_generated_filename ON solar8_generated_files (filename);",
+        "CREATE INDEX IF NOT EXISTS idx_generated_created ON solar8_generated_files (created_at DESC);",
+    ]
+
     try:
         with get_db_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(sql)
+                cur.execute(create_table_sql)
+                for idx_sql in index_sqls:
+                    try:
+                        cur.execute(idx_sql)
+                    except Exception as idx_e:
+                        logger.debug("Index creation (non-critical): %s", idx_e)
             conn.commit()
         logger.info("solar8_generated_files table ensured.")
     except Exception as e:
