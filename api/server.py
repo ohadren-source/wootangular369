@@ -1183,11 +1183,12 @@ def elephant_upload():
             )
 
             # Chunk the file semantically
+            # chunk_file_semantic returns List[Tuple[str, int]] — (chunk_text, chunk_number)
             chunks = chunk_file_semantic(content, mime_type=mime_type, target_bytes=400000)
             total_chunks = len(chunks)
 
-            # Store each chunk
-            for chunk_num, chunk_content in enumerate(chunks, 1):
+            # Store each chunk — unpack the (chunk_text, chunk_number) tuple directly
+            for chunk_content, chunk_num in chunks:
                 chunk_hash = hashlib.sha256(chunk_content.encode()).hexdigest()
                 deps = build_dependencies(chunk_num - 1, total_chunks - 1)
 
