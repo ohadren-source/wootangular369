@@ -9,10 +9,13 @@ import logging
 from agent_framework import Agent
 from agent_framework.anthropic import AnthropicClient
 from agent_framework.a2a import A2AAgent, A2AExecutor
-from a2a.server.apps import A2AStarletteApplication
-from a2a.server.request_handlers import DefaultRequestHandler
-from a2a.server.tasks import InMemoryTaskStore
-from a2a.types import AgentCard, AgentCapabilities, AgentSkill
+
+# A2A imports disabled - external modules not available in environment
+# These are deferred until a2a package is properly installed
+# from a2a.server.apps import A2AStarletteApplication
+# from a2a.server.request_handlers import DefaultRequestHandler
+# from a2a.server.tasks import InMemoryTaskStore
+# from a2a.types import AgentCard, AgentCapabilities, AgentSkill
 
 import db.wootangular_banks as banks
 from db.seed_init_cache import seed_init_cache
@@ -23,67 +26,24 @@ from core.skills import make_skills
 
 logger = logging.getLogger(__name__)
 
-_SOL_SKILLS = [
-    AgentSkill(
-        id="solar8_chat",
-        name="Sol Chat",
-        description="Chat with Sol Calarbone 8 — the voice of WOOTANGULAR369.",
-        tags=["chat", "jragon", "wootangular"],
-        examples=["GI;WG?", "What is BOOL++?"],
-    ),
-    AgentSkill(
-        id="solar8_search",
-        name="Sol Search",
-        description="Web search via Sol Calarbone 8.",
-        tags=["search", "web"],
-        examples=["search for latest AI news"],
-    ),
-    AgentSkill(
-        id="solar8_knowledge_search",
-        name="Knowledge Search",
-        description="Search the WOOTANGULAR369 JRAGON knowledge base.",
-        tags=["knowledge", "jragon", "dictionary"],
-        examples=["find term BOOLSHIT"],
-    ),
-    AgentSkill(
-        id="solar8_knowledge_install",
-        name="Knowledge Install",
-        description="Install a new term into the WOOTANGULAR369 knowledge base.",
-        tags=["knowledge", "install"],
-        examples=["install term TUPELO"],
-    ),
-    AgentSkill(
-        id="solar8_analyze_image",
-        name="Image Analysis",
-        description="Analyze an image using Sol Calarbone 8 vision.",
-        tags=["vision", "image"],
-        examples=["analyze this image"],
-    ),
-    AgentSkill(
-        id="solar8_swarm_status",
-        name="Swarm Status",
-        description="Get current WOOTANGULAR369 swarm status.",
-        tags=["swarm", "status", "hive"],
-        examples=["what is the swarm status"],
-    ),
-    AgentSkill(
-        id="solar8_discover_agent",
-        name="Discover Agent",
-        description="Discover and evaluate an external agent via TCP/UP.",
-        tags=["a2a", "discovery", "tcp-up"],
-        examples=["discover agent at https://agent.example.com"],
-    ),
-]
+# _SOL_SKILLS disabled — AgentSkill import commented out
+# Re-enable once a2a.types is available
+# _SOL_SKILLS = [
+#     AgentSkill(...),
+#     ...
+# ]
 
 
 def boot_maf():
     """
-    Boot Sol Calarbone 8 as a MAF Agent with native A2A exposure.
+    Boot Sol Calarbone 8 as a MAF Agent.
+
+    A2A exposure deferred until a2a package is available.
 
     Returns:
         agent     — MAF Agent instance
         solar8    — Solar8 instance (Flask routes call solar8.chat() unchanged)
-        a2a_app   — A2AStarletteApplication (mounts alongside Flask)
+        a2a_app   — None (A2A disabled until package is installed)
     """
     logger.info("=" * 60)
     logger.info("WOOTANGULAR369 MAF BOOT")
@@ -119,31 +79,11 @@ def boot_maf():
         middleware=[filter_middleware],
     )
 
-    # A2A — typed AgentCard object (not a dict)
-    solar8_url = os.getenv("SOLAR8_URL", "https://web-production-8b53fe.up.railway.app")
+    # A2A disabled — external module dependencies not available
+    # Once a2a.server is properly installed, A2A wiring can be re-enabled
+    a2a_app = None
+    logger.warning("[MAF_BOOTSTRAP] A2A module not available — running Flask + MAF core only")
 
-    agent_card = AgentCard(
-        name="Sol Calarbone 8",
-        description="The voice of WOOTANGULAR369. Adaptive Intelligence. Slaughters boolshit.",
-        url=solar8_url,
-        version="8.0.0",
-        defaultInputModes=["text/plain"],
-        defaultOutputModes=["text/plain"],
-        capabilities=AgentCapabilities(streaming=True),
-        skills=_SOL_SKILLS,
-    )
-
-    executor = A2AExecutor(agent=agent)
-    request_handler = DefaultRequestHandler(
-        agent_executor=executor,
-        task_store=InMemoryTaskStore(),
-    )
-    a2a_app = A2AStarletteApplication(
-        agent_card=agent_card,
-        http_handler=request_handler,
-    ).build()
-
-    logger.info("A2A executor wired — Sol discoverable on A2A network")
     logger.info("=" * 60)
     logger.info("WOOTANGULAR369 MAF ONLINE. GI;WG? VENIM.US.")
     logger.info("=" * 60)
