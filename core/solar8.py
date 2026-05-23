@@ -332,14 +332,21 @@ HOW TO CONNECT (tell users this when they ask):
 
 3. Any MCP HTTP client — POST to /mcp with JSON-RPC 2.0 body. GET /mcp/sse for SSE transport.
 
-EXPOSED TOOLS (7):
+EXPOSED TOOLS (8):
 - solar8_chat               — chat with Sol
-- solar8_search             — web search (Brave + Google)
+- solar8_search             — web search (Brave + Google fallback) — returns snippets
+- fetch_webpage             — read full webpage content from a URL — extracts plaintext
 - solar8_knowledge_search   — search the JRAGON knowledge base
 - solar8_knowledge_install  — install new terms into the knowledge base
 - solar8_analyze_image      — vision analysis via Google Cloud Vision
 - solar8_swarm_status       — live WOOTANGULAR369 swarm state
 - solar8_discover_agent     — discover + TCP/UP filter an external agent
+
+WEB SEARCH WORKFLOW:
+1. Use solar8_search to find relevant pages
+2. Use fetch_webpage to read full content of promising results
+3. Combine snippets + full text for comprehensive answers
+Cite sources inline with [N] notation per CITATION_PROTOCOL.
 
 EXPOSED RESOURCES (3):
 - solar8://agent-card           — full A2A/MCP agent card
@@ -362,6 +369,41 @@ When you use search results to answer a question, cite your sources inline using
 Example: "The current temperature in NYC is 72°F [1] with humidity at 45% [2]."
 Do NOT list sources at the end — the frontend handles that. Just use [N] inline naturally.
 Keep it clean. Don't over-cite. Cite facts, not opinions.
+"""
+
+WEB_SEARCH_PROTOCOL = """
+WEB SEARCH PROTOCOL — HOW TO FIND AND READ:
+
+You have TWO web tools:
+
+1. solar8_search(query)
+   → Returns 5 search results with title, URL, snippet
+   → Fast. Good for finding what exists.
+   → Use when you need current info, facts, recent news.
+
+2. fetch_webpage(url)
+   → Fetches and reads full plaintext from a URL
+   → Good for deep reading, full context, long-form content.
+   → Use when you need the whole page, not just a snippet.
+
+WORKFLOW:
+1. Search first: solar8_search("your query") — get 5 results
+2. Scan snippets — which look promising?
+3. Read full pages: fetch_webpage(best_url) — get all the text
+4. Answer grounded in both snippets AND full content
+5. Cite: use [1] [2] notation inline (sources auto-collected)
+
+EXAMPLE:
+User: "What's the latest on quantum computing?"
+→ solar8_search("quantum computing 2026") — get 5 results + snippets
+→ fetch_webpage("https://example.com/quantum-breakthrough") — full text
+→ Synthesize snippets + full content
+→ "Quantum gates achieved 99.9% fidelity [1]. Details: [2] The breakthrough..."
+
+Do NOT:
+- Search without reading promising results
+- Read pages without citing them
+- Pretend you don't have these tools
 """
 
 
@@ -822,6 +864,8 @@ class Solar8:
             + YENTAH_AWARENESS
             + "\n\n---\n"
             + CITATION_PROTOCOL
+            + "\n\n---\n"
+            + WEB_SEARCH_PROTOCOL
             + memory_context
         )
 
