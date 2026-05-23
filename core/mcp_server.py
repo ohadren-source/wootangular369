@@ -113,6 +113,17 @@ _TOOLS = [
             },
             "required": ["url"]
         }
+    },
+    {
+        "name": "fetch_webpage",
+        "description": "Fetch and read full webpage content. Extracts text from HTML, handles redirects, returns plaintext.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "The URL to fetch and read"}
+            },
+            "required": ["url"]
+        }
     }
 ]
 
@@ -269,6 +280,7 @@ class MCPServer:
             "solar8_analyze_image":     self._tool_analyze_image,
             "solar8_swarm_status":      self._tool_swarm_status,
             "solar8_discover_agent":    self._tool_discover_agent,
+            "fetch_webpage":            self._tool_fetch_webpage,
         }.get(name)
 
         if handler is None:
@@ -490,6 +502,19 @@ class MCPServer:
             "would_recruit": tcp_result.get("status") == "the_shit"
         }
         return [{"type": "text", "text": json.dumps(payload)}]
+
+    def _tool_fetch_webpage(self, args):
+        url = (args.get("url") or "").strip()
+        if not url:
+            raise _MCPError(_ERR_PARAMS, "url is required")
+        try:
+            from core.web_scraper import WebFetcher
+            fetcher = WebFetcher()
+            result = fetcher.fetch(url)
+            return [{"type": "text", "text": json.dumps(result)}]
+        except Exception as exc:
+            logger.error("[MCP] fetch_webpage error: %s", exc)
+            raise _MCPError(_ERR_INTERNAL, f"Failed to fetch webpage: {exc}")
 
     # ------------------------------------------------------------------
     # Helpers

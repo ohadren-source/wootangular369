@@ -367,6 +367,26 @@ Revise according to the instruction. Preserve structure."""
             return json.dumps({"error": f"Download failed: {exc}"})
 
     # ========================================================================
+    # Web Content Fetching
+    # ========================================================================
+
+    def fetch_webpage(url: str) -> str:
+        """Fetch and extract text content from a webpage."""
+        from core.web_scraper import WebFetcher
+        try:
+            fetcher = WebFetcher()
+            result = fetcher.fetch(url)
+            return json.dumps(result)
+        except Exception as exc:
+            logger.error("[SKILL] fetch_webpage error: %s", exc)
+            return json.dumps({
+                "url": url,
+                "status": None,
+                "error": str(exc),
+                "backend": None,
+            })
+
+    # ========================================================================
 
     return [
         solar8_chat,
@@ -376,6 +396,7 @@ Revise according to the instruction. Preserve structure."""
         solar8_analyze_image,
         solar8_swarm_status,
         solar8_discover_agent,
+        fetch_webpage,
         upload_file_large,
         list_file_chunks,
         process_file_chunk,
