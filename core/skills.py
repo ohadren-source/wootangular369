@@ -367,7 +367,7 @@ Revise according to the instruction. Preserve structure."""
             return json.dumps({"error": f"Download failed: {exc}"})
 
     # ========================================================================
-    # Web Content Fetching
+    # Web Content Fetching — 7 Methods
     # ========================================================================
 
     def fetch_webpage(url: str) -> str:
@@ -386,6 +386,160 @@ Revise according to the instruction. Preserve structure."""
                 "backend": None,
             })
 
+    def fetch_httpx(url: str, headers: dict = None, timeout: int = 15) -> str:
+        """Fetch webpage via httpx async HTTP client. Fast, async-first."""
+        try:
+            import httpx
+            hdrs = headers or {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+            with httpx.Client(timeout=timeout) as client:
+                resp = client.get(url, headers=hdrs, follow_redirects=True)
+                resp.raise_for_status()
+                return json.dumps({
+                    "url": resp.url,
+                    "status": resp.status_code,
+                    "content": resp.text[:10000],
+                    "content_length": len(resp.text),
+                    "backend": "httpx"
+                })
+        except Exception as exc:
+            logger.error("[SKILL] fetch_httpx error: %s", exc)
+            return json.dumps({"error": str(exc), "backend": "httpx"})
+
+    def fetch_pyppeteer(url: str, wait_selector: str = None) -> str:
+        """Fetch webpage via pyppeteer (headless Chrome). Executes JavaScript."""
+        try:
+            import asyncio
+            from pyppeteer import launch
+
+            async def _fetch():
+                browser = await launch(headless=True)
+                page = await browser.newPage()
+                await page.goto(url, {"waitUntil": "networkidle2"})
+                if wait_selector:
+                    await page.waitForSelector(wait_selector, timeout=5000)
+                content = await page.content()
+                await browser.close()
+                return content
+
+            loop = asyncio.new_event_loop()
+            content = loop.run_until_complete(_fetch())
+            loop.close()
+            return json.dumps({
+                "url": url,
+                "content": content[:10000],
+                "content_length": len(content),
+                "backend": "pyppeteer",
+                "javascript_executed": True
+            })
+        except Exception as exc:
+            logger.error("[SKILL] fetch_pyppeteer error: %s", exc)
+            return json.dumps({"error": str(exc), "backend": "pyppeteer"})
+
+    def fetch_selenium(url: str, headless: bool = True) -> str:
+        """Fetch webpage via Selenium browser automation. Full DOM rendering."""
+        try:
+            from selenium import webdriver
+            from selenium.webdriver.chrome.options import Options
+
+            options = Options()
+            if headless:
+                options.add_argument("--headless")
+            options.add_argument("--no-sandbox")
+
+            driver = webdriver.Chrome(options=options)
+            driver.get(url)
+            content = driver.page_source
+            driver.quit()
+            return json.dumps({
+                "url": url,
+                "content": content[:10000],
+                "content_length": len(content),
+                "backend": "selenium",
+                "javascript_executed": True
+            })
+        except Exception as exc:
+            logger.error("[SKILL] fetch_selenium error: %s", exc)
+            return json.dumps({"error": str(exc), "backend": "selenium"})
+
+    def fetch_splash(url: str, wait: int = 0, lua_script: str = None) -> str:
+        """Fetch webpage via Splash remote rendering service. JavaScript-heavy sites."""
+        try:
+            import requests as _req
+            splash_url = "http://localhost:8050/execute"
+
+            script = lua_script or f"""
+            function main(splash)
+                splash:go('{url}')
+                splash:wait({wait})
+                return splash:html()
+            end
+            """
+
+            resp = _req.post(splash_url, json={"lua_source": script}, timeout=30)
+            resp.raise_for_status()
+            result = resp.json()
+            html = result.get("html", "")
+            return json.dumps({
+                "url": url,
+                "content": html[:10000],
+                "content_length": len(html),
+                "backend": "splash",
+                "javascript_executed": True
+            })
+        except Exception as exc:
+            logger.error("[SKILL] fetch_splash error: %s", exc)
+            return json.dumps({"error": str(exc), "backend": "splash"})
+
+    def fetch_scrapy(url: str, selectors: dict = None) -> str:
+        """Fetch and extract structured data via Scrapy. XPath/CSS selectors."""
+        try:
+            import requests as _req
+            from scrapy.selector import Selector
+
+            resp = _req.get(url, timeout=15)
+            resp.raise_for_status()
+            selector = Selector(text=resp.text)
+
+            extracted = {}
+            if selectors:
+                for key, xpath in selectors.items():
+                    extracted[key] = selector.xpath(xpath).getall()
+            else:
+                extracted = {"raw_html": resp.text[:10000]}
+
+            return json.dumps({
+                "url": url,
+                "status": resp.status_code,
+                "extracted": extracted,
+                "backend": "scrapy"
+            })
+        except Exception as exc:
+            logger.error("[SKILL] fetch_scrapy error: %s", exc)
+            return json.dumps({"error": str(exc), "backend": "scrapy"})
+
+    def extract_trafilatura(url: str = None, html_content: str = None) -> str:
+        """Extract main content from webpage. Removes boilerplate, ads, paywalls."""
+        try:
+            import trafilatura
+
+            if url:
+                downloaded = trafilatura.fetch_url(url)
+                content = trafilatura.extract(downloaded, include_comments=False)
+            elif html_content:
+                content = trafilatura.extract(html_content, include_comments=False)
+            else:
+                return json.dumps({"error": "url or html_content required"})
+
+            return json.dumps({
+                "source": url or "html_content",
+                "extracted_content": content[:5000] if content else "",
+                "backend": "trafilatura",
+                "success": bool(content)
+            })
+        except Exception as exc:
+            logger.error("[SKILL] extract_trafilatura error: %s", exc)
+            return json.dumps({"error": str(exc), "backend": "trafilatura"})
+
     # ========================================================================
 
     return [
@@ -397,6 +551,12 @@ Revise according to the instruction. Preserve structure."""
         solar8_swarm_status,
         solar8_discover_agent,
         fetch_webpage,
+        fetch_httpx,
+        fetch_pyppeteer,
+        fetch_selenium,
+        fetch_splash,
+        fetch_scrapy,
+        extract_trafilatura,
         upload_file_large,
         list_file_chunks,
         process_file_chunk,

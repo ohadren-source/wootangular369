@@ -57,12 +57,15 @@ def boot_maf():
     result = load_corpus_into_cache(banks, force=False)
     logger.info("Corpus: %s", result)
 
-    # Sol instance — Solar8 class completely unchanged
+    # Sol instance — Solar8 class with tools support
     solar8 = Solar8()
 
-    # Tools — plain functions
+    # Tools — plain functions (with solar8 reference for internal use)
     tools = make_skills(solar8_instance=solar8, banks_instance=banks)
     logger.info("Tools registered: %d", len(tools))
+
+    # Attach tools to solar8 instance so it can access them
+    solar8.tools = tools
 
     # GI;WG? middleware
     filter_middleware = GIWGMiddleware()

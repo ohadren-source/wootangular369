@@ -683,6 +683,90 @@ class Solar8:
                 },
                 "required": ["file_id"]
             }
+        },
+        {
+            "name": "fetch_webpage",
+            "description": "Fetch and extract full plaintext content from a webpage. Handles redirects, strips HTML/scripts/styles.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The URL to fetch"}
+                },
+                "required": ["url"]
+            }
+        },
+        {
+            "name": "fetch_httpx",
+            "description": "Fetch webpage via async httpx client. Fast, no JavaScript execution. Best for simple HTML pages.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The URL to fetch"},
+                    "headers": {"type": "object", "description": "Optional custom headers"},
+                    "timeout": {"type": "integer", "description": "Request timeout in seconds (default 15)"}
+                },
+                "required": ["url"]
+            }
+        },
+        {
+            "name": "fetch_pyppeteer",
+            "description": "Fetch webpage via pyppeteer (headless Chrome). Executes JavaScript, handles dynamic content.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The URL to fetch"},
+                    "wait_selector": {"type": "string", "description": "Optional CSS selector to wait for before returning"}
+                },
+                "required": ["url"]
+            }
+        },
+        {
+            "name": "fetch_selenium",
+            "description": "Fetch webpage via Selenium browser automation. Full DOM rendering, JavaScript execution.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The URL to fetch"},
+                    "headless": {"type": "boolean", "description": "Run browser in headless mode (default true)"}
+                },
+                "required": ["url"]
+            }
+        },
+        {
+            "name": "fetch_splash",
+            "description": "Fetch webpage via Splash remote rendering service. JavaScript-heavy sites, lighter than Selenium.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The URL to fetch"},
+                    "wait": {"type": "integer", "description": "Wait time in milliseconds after page load"},
+                    "lua_script": {"type": "string", "description": "Optional custom Lua script for rendering"}
+                },
+                "required": ["url"]
+            }
+        },
+        {
+            "name": "fetch_scrapy",
+            "description": "Fetch and extract structured data via Scrapy. Use XPath/CSS selectors for targeted extraction.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The URL to fetch"},
+                    "selectors": {"type": "object", "description": "Dict of {key: xpath_expression} for extraction"}
+                },
+                "required": ["url"]
+            }
+        },
+        {
+            "name": "extract_trafilatura",
+            "description": "Extract main article content from webpage. Removes boilerplate, ads, paywalls. Excellent for news/blog articles.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The URL to fetch and extract from"},
+                    "html_content": {"type": "string", "description": "Alternative: provide raw HTML instead of URL"}
+                }
+            }
         }
     ]
 
@@ -725,6 +809,7 @@ class Solar8:
     def __init__(self):
         self.prime_director = PrimeDirector()
         self._current_sources = []
+        self.tools = []  # Web surfing + file processing skills (attached in boot_maf)
 
         # Load the full identity corpus ONCE at boot time — cached for every LLM call
         self._corpus_text = Solar8._load_corpus()
@@ -749,6 +834,9 @@ class Solar8:
         )
         self._system_prompt = self._build_system_prompt(role="ROOT")
         logger.info("Sol Calarbone 8 online. The hive has a voice.")
+        if self.tools:
+            logger.info("[SOLAR8] %d tools loaded: %s", len(self.tools),
+                       [t.__name__ if hasattr(t, '__name__') else str(t) for t in self.tools[:5]])
 
     @staticmethod
     def _normalize_role(role: Optional[str] = None) -> str:
@@ -1185,6 +1273,23 @@ class Solar8:
                     return f"read_elephant_file error: {resp.status_code} {resp.text}"
                 except Exception as e:
                     return f"read_elephant_file error: {e}"
+            # Web surfing tools — delegate to skills functions
+            elif name in {"fetch_webpage", "fetch_httpx", "fetch_pyppeteer", "fetch_selenium", "fetch_splash", "fetch_scrapy", "extract_trafilatura"}:
+                if not self.tools:
+                    return f"{name}: No tools available. Tools not initialized at boot."
+                tool_fn = None
+                for tool in self.tools:
+                    if hasattr(tool, '__name__') and tool.__name__ == name:
+                        tool_fn = tool
+                        break
+                if not tool_fn:
+                    return f"{name}: Tool function not found in skills list"
+                try:
+                    result = tool_fn(**inputs)
+                    return result
+                except Exception as e:
+                    logger.error("[SKILL] %s error: %s", name, e)
+                    return f"{name} failed: {e}"
             else:
                 return f"Unknown tool: {name}"
         except Exception as e:
