@@ -371,7 +371,7 @@ Revise according to the instruction. Preserve structure."""
     # ========================================================================
 
     def fetch_webpage(url: str) -> str:
-        """Fetch and extract text content from a webpage."""
+        """Fetch and extract full plaintext content from a webpage. Strips HTML, handles redirects."""
         from core.web_scraper import WebFetcher
         try:
             fetcher = WebFetcher()

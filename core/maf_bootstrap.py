@@ -79,6 +79,12 @@ def boot_maf():
         middleware=[filter_middleware],
     )
 
+    # Diagnostic: log actual tools exposed by Agent
+    logger.info("[MAF_BOOTSTRAP] Agent tools exposed:")
+    for i, tool in enumerate(agent.tools):
+        tool_name = tool.name if hasattr(tool, 'name') else (tool.__name__ if hasattr(tool, '__name__') else str(tool))
+        logger.info("[MAF_BOOTSTRAP]   %d. %s", i+1, tool_name)
+
     # A2A disabled — external module dependencies not available
     # Once a2a.server is properly installed, A2A wiring can be re-enabled
     a2a_app = None
