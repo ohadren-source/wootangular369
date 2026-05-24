@@ -165,6 +165,21 @@ _TOOLS = [
             },
             "required": ["repo", "path"]
         }
+    },
+    {
+        "name": "modify_file_from_github",
+        "description": "Complete pipeline: fetch GitHub file -> chunk -> modify with Claude -> reassemble. Handles files of any size with semantic chunking.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string", "description": "Repository in format 'owner/repo-name'"},
+                "path": {"type": "string", "description": "File path within repo"},
+                "branch": {"type": "string", "description": "Branch name (default: 'main')"},
+                "user_instruction": {"type": "string", "description": "What to do with the file (e.g., 'Fix typos, improve clarity')"},
+                "token": {"type": "string", "description": "GitHub token (optional, for private repos)"}
+            },
+            "required": ["repo", "path", "user_instruction"]
+        }
     }
 ]
 
@@ -325,6 +340,7 @@ class MCPServer:
             "fetch_webpage":            self._tool_fetch_webpage,
             "fetch_pyppeteer":          self._tool_fetch_pyppeteer,
             "fetch_github_raw":         self._tool_fetch_github_raw,
+            "modify_file_from_github":  self._tool_modify_file_from_github,
         }.get(name)
 
         if handler is None:
@@ -632,6 +648,47 @@ class MCPServer:
         except Exception as exc:
             logger.error("[MCP] fetch_github_raw error: %s", exc)
             raise _MCPError(_ERR_INTERNAL, f"Failed to fetch from GitHub: {exc}")
+
+    def _tool_modify_file_from_github(self, args):
+        """Fetch GitHub file -> chunk -> modify with Claude -> reassemble."""
+        repo = (args.get("repo") or "").strip()
+        path = (args.get("path") or "").strip()
+        branch = (args.get("branch") or "main").strip()
+        user_instruction = (args.get("user_instruction") or "").strip()
+        token = args.get("token")
+
+        if not repo or "/" not in repo:
+            raise _MCPError(_ERR_PARAMS, "repo is required (format: 'owner/repo-name')")
+        if not path:
+            raise _MCPError(_ERR_PARAMS, "path is required")
+        if not user_instruction:
+            raise _MCPError(_ERR_PARAMS, "user_instruction is required (what to do with the file)")
+
+        try:
+            import asyncio
+            from core.file_modifier import FileModifier
+
+            # Initialize modifier with Claude client
+            modifier = FileModifier(claude_client=self._solar8.client, db_banks=self._banks)
+
+            # Run the async pipeline
+            loop = asyncio.new_event_loop()
+            result = loop.run_until_complete(
+                modifier.modify_file_from_github(
+                    repo=repo,
+                    path=path,
+                    branch=branch,
+                    user_instruction=user_instruction,
+                    token=token
+                )
+            )
+            loop.close()
+
+            return [{"type": "text", "text": json.dumps(result)}]
+
+        except Exception as exc:
+            logger.error("[MCP] modify_file_from_github error: %s", exc)
+            raise _MCPError(_ERR_INTERNAL, f"File modification pipeline failed: {exc}")
 
     # ------------------------------------------------------------------
     # Helpers

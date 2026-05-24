@@ -445,6 +445,69 @@ Revise according to the instruction. Preserve structure."""
             })
 
     # ========================================================================
+    # File Modification Pipeline
+    # ========================================================================
+
+    def modify_file_from_github(
+        repo: str,
+        path: str,
+        branch: str = "main",
+        user_instruction: str = None,
+        token: str = None
+    ) -> str:
+        """
+        Complete pipeline: fetch GitHub file -> chunk -> modify with Claude -> reassemble.
+
+        Handles files of any size. Semantic chunking preserves structure.
+        All chunks processed through Claude with consistency tracking.
+
+        Args:
+            repo: Repository "owner/repo-name"
+            path: File path in repo
+            branch: Branch name (default "main")
+            user_instruction: What to do (e.g., "Fix typos, improve clarity")
+            token: GitHub token (for private repos)
+
+        Returns JSON with:
+        - status: "ok" or "error"
+        - output_content: The modified file content
+        - output_filename: Suggested output name
+        - chunk_count: How many chunks were processed
+        - original_size / final_size: Before and after
+        """
+        from core.file_modifier import FileModifier
+        import anthropic as _anthropic
+
+        try:
+            # Initialize modifier with Claude client
+            anthropic_client = _anthropic.Anthropic()
+            modifier = FileModifier(claude_client=anthropic_client, db_banks=banks_instance)
+
+            # Run the async pipeline in a new event loop
+            loop = asyncio.new_event_loop()
+            result = loop.run_until_complete(
+                modifier.modify_file_from_github(
+                    repo=repo,
+                    path=path,
+                    branch=branch,
+                    user_instruction=user_instruction,
+                    token=token
+                )
+            )
+            loop.close()
+
+            return json.dumps(result)
+
+        except Exception as exc:
+            logger.error("[SKILL] modify_file_from_github error: %s", exc)
+            return json.dumps({
+                "status": "error",
+                "file_id": None,
+                "filename": path.split("/")[-1] if path else "unknown",
+                "error": str(exc)
+            })
+
+    # ========================================================================
 
     return [
         solar8_chat,
@@ -458,6 +521,7 @@ Revise according to the instruction. Preserve structure."""
         fetch_webpage,
         fetch_pyppeteer,
         fetch_github_raw,
+        modify_file_from_github,
         upload_file_large,
         list_file_chunks,
         process_file_chunk,
