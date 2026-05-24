@@ -11,6 +11,8 @@ import uuid
 import hashlib
 import asyncio
 
+from core.chunking_constants import MAX_CHUNK_TOKENS
+
 logger = logging.getLogger(__name__)
 
 
@@ -375,12 +377,21 @@ Revise according to the instruction. Preserve structure."""
         """
         Fetch raw content from any URL via httpx async HTTP client.
         Simple GET with redirect handling. Returns exact raw content.
+        WARNING: Enforces token ceiling of 180K tokens per chunk.
         """
         from core.file_fetchers import fetch_httpx as _fetch_httpx
         try:
             loop = asyncio.new_event_loop()
             result = loop.run_until_complete(_fetch_httpx(url, timeout=timeout, headers=headers))
             loop.close()
+
+            # Add ceiling warning if applicable
+            if result.get("token_count", 0) > MAX_CHUNK_TOKENS:
+                result["ceiling_warning"] = (
+                    f"Content exceeds token ceiling ({result['token_count']} > {MAX_CHUNK_TOKENS}). "
+                    "Will require chunking with fallback splitting strategies."
+                )
+
             return json.dumps(result)
         except Exception as exc:
             logger.error("[SKILL] fetch_httpx error: %s", exc)
@@ -390,12 +401,21 @@ Revise according to the instruction. Preserve structure."""
         """
         Fetch and extract main content from webpage.
         Uses trafilatura for extraction, falls back to raw content if needed.
+        WARNING: Enforces token ceiling of 180K tokens per chunk.
         """
         from core.file_fetchers import fetch_webpage as _fetch_webpage
         try:
             loop = asyncio.new_event_loop()
             result = loop.run_until_complete(_fetch_webpage(url, timeout=timeout))
             loop.close()
+
+            # Add ceiling warning if applicable
+            if result.get("token_count", 0) > MAX_CHUNK_TOKENS:
+                result["ceiling_warning"] = (
+                    f"Content exceeds token ceiling ({result['token_count']} > {MAX_CHUNK_TOKENS}). "
+                    "Will require chunking with fallback splitting strategies."
+                )
+
             return json.dumps(result)
         except Exception as exc:
             logger.error("[SKILL] fetch_webpage error: %s", exc)
@@ -405,12 +425,21 @@ Revise according to the instruction. Preserve structure."""
         """
         Fetch webpage via headless Chrome (pyppeteer).
         Executes JavaScript, handles dynamic content.
+        WARNING: Enforces token ceiling of 180K tokens per chunk.
         """
         from core.file_fetchers import fetch_pyppeteer as _fetch_pyppeteer
         try:
             loop = asyncio.new_event_loop()
             result = loop.run_until_complete(_fetch_pyppeteer(url, wait_selector=wait_selector, timeout=timeout))
             loop.close()
+
+            # Add ceiling warning if applicable
+            if result.get("token_count", 0) > MAX_CHUNK_TOKENS:
+                result["ceiling_warning"] = (
+                    f"Content exceeds token ceiling ({result['token_count']} > {MAX_CHUNK_TOKENS}). "
+                    "Will require chunking with fallback splitting strategies."
+                )
+
             return json.dumps(result)
         except Exception as exc:
             logger.error("[SKILL] fetch_pyppeteer error: %s", exc)
@@ -428,16 +457,26 @@ Revise according to the instruction. Preserve structure."""
             token: GitHub personal access token (optional)
 
         Returns JSON with content, size, sha, urls, and any errors.
+        WARNING: Enforces token ceiling of 180K tokens per chunk.
         """
         from core.file_fetchers import fetch_github_raw as _fetch_github_raw
         try:
             result = _fetch_github_raw(repo=repo, path=path, branch=branch, token=token)
+
+            # Add ceiling warning if applicable
+            if result.get("token_count", 0) > MAX_CHUNK_TOKENS:
+                result["ceiling_warning"] = (
+                    f"Content exceeds token ceiling ({result['token_count']} > {MAX_CHUNK_TOKENS}). "
+                    "Will require chunking with fallback splitting strategies."
+                )
+
             return json.dumps(result)
         except Exception as exc:
             logger.error("[SKILL] fetch_github_raw error: %s", exc)
             return json.dumps({
                 "content": None,
                 "size": 0,
+                "token_count": 0,
                 "sha": None,
                 "url": f"https://github.com/{repo}/blob/{branch}/{path}",
                 "raw_url": f"https://raw.githubusercontent.com/{repo}/{branch}/{path}",
@@ -460,6 +499,8 @@ Revise according to the instruction. Preserve structure."""
 
         Handles files of any size. Semantic chunking preserves structure.
         All chunks processed through Claude with consistency tracking.
+        TOKEN CEILING: 180K tokens max per chunk (20K headroom for context).
+        Uses emergency fallback splitting if chunks exceed ceiling.
 
         Args:
             repo: Repository "owner/repo-name"
@@ -474,6 +515,7 @@ Revise according to the instruction. Preserve structure."""
         - output_filename: Suggested output name
         - chunk_count: How many chunks were processed
         - original_size / final_size: Before and after
+        - chunk_token_info: Token counts for each chunk processed
         """
         from core.file_modifier import FileModifier
         import anthropic as _anthropic
@@ -495,6 +537,16 @@ Revise according to the instruction. Preserve structure."""
                 )
             )
             loop.close()
+
+            # Log token ceiling information if available
+            if result.get("status") == "ok":
+                logger.info(
+                    "[SKILL] Pipeline complete: %d chunks processed, "
+                    "%d original -> %d final tokens",
+                    result.get("chunk_count", 0),
+                    result.get("original_size", 0),
+                    result.get("final_size", 0)
+                )
 
             return json.dumps(result)
 

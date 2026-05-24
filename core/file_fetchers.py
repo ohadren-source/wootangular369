@@ -17,6 +17,8 @@ import base64
 from typing import Dict, Optional, Any
 from datetime import datetime, timezone
 
+from core.chunking_constants import estimate_tokens, MAX_CHUNK_TOKENS
+
 logger = logging.getLogger(__name__)
 
 # ============================================================================
@@ -57,12 +59,24 @@ async def fetch_httpx(url: str, timeout: int = 15, headers: Optional[Dict] = Non
         async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
             response = await client.get(url, headers=headers or {})
             content = response.text
+            size_bytes = len(content.encode("utf-8"))
+            token_count = estimate_tokens(content)
+
+            if token_count > MAX_CHUNK_TOKENS:
+                logger.warning(
+                    "[fetch_httpx] Content exceeds token ceiling (%d > %d tokens)",
+                    token_count,
+                    MAX_CHUNK_TOKENS
+                )
+            else:
+                logger.info("[fetch_httpx] Fetched %d bytes (%d tokens)", size_bytes, token_count)
 
             return {
                 "status_code": response.status_code,
                 "content": content,
                 "url": str(response.url),
-                "size_bytes": len(content.encode("utf-8")),
+                "size_bytes": size_bytes,
+                "token_count": token_count,
                 "error": None
             }
     except ImportError:
@@ -76,12 +90,24 @@ async def fetch_httpx(url: str, timeout: int = 15, headers: Optional[Dict] = Non
             resp = requests.get(url, headers=headers_dict, timeout=timeout, allow_redirects=True)
             resp.raise_for_status()
             content = resp.text
+            size_bytes = len(content.encode("utf-8"))
+            token_count = estimate_tokens(content)
+
+            if token_count > MAX_CHUNK_TOKENS:
+                logger.warning(
+                    "[fetch_httpx] Content exceeds token ceiling (%d > %d tokens)",
+                    token_count,
+                    MAX_CHUNK_TOKENS
+                )
+            else:
+                logger.info("[fetch_httpx] Fetched %d bytes (%d tokens)", size_bytes, token_count)
 
             return {
                 "status_code": resp.status_code,
                 "content": content,
                 "url": str(resp.url),
-                "size_bytes": len(content.encode("utf-8")),
+                "size_bytes": size_bytes,
+                "token_count": token_count,
                 "error": None
             }
         except Exception as e:
@@ -132,11 +158,19 @@ async def fetch_webpage(url: str, timeout: int = 15) -> Dict:
         if downloaded:
             extracted = trafilatura.extract(downloaded, include_comments=False)
             if extracted:
-                logger.info("[fetch_webpage] Successfully extracted with trafilatura")
+                token_count = estimate_tokens(extracted)
+                logger.info("[fetch_webpage] Successfully extracted with trafilatura (%d tokens)", token_count)
+                if token_count > MAX_CHUNK_TOKENS:
+                    logger.warning(
+                        "[fetch_webpage] Content exceeds token ceiling (%d > %d tokens)",
+                        token_count,
+                        MAX_CHUNK_TOKENS
+                    )
                 return {
                     "content": extracted,
                     "method": "trafilatura",
                     "url": url,
+                    "token_count": token_count,
                     "title": trafilatura.extract(downloaded, include_comments=False, output_format="python").get("title") if hasattr(trafilatura, 'extract') else None,
                     "error": None
                 }
@@ -162,6 +196,7 @@ async def fetch_webpage(url: str, timeout: int = 15) -> Dict:
         "content": result["content"],
         "method": "raw_fallback",
         "url": result["url"],
+        "token_count": result.get("token_count", 0),
         "title": None,
         "error": None
     }
@@ -219,11 +254,22 @@ async def fetch_pyppeteer(
                 logger.warning("[fetch_pyppeteer] Selector wait failed: %s", e)
 
         content = await page.content()
-        logger.info("[fetch_pyppeteer] Successfully fetched %d bytes", len(content))
+        size_bytes = len(content.encode("utf-8"))
+        token_count = estimate_tokens(content)
+
+        if token_count > MAX_CHUNK_TOKENS:
+            logger.warning(
+                "[fetch_pyppeteer] Content exceeds token ceiling (%d > %d tokens)",
+                token_count,
+                MAX_CHUNK_TOKENS
+            )
+        else:
+            logger.info("[fetch_pyppeteer] Successfully fetched %d bytes (%d tokens)", size_bytes, token_count)
 
         return {
             "content": content,
             "url": url,
+            "token_count": token_count,
             "error": None
         }
     except ImportError:
@@ -316,11 +362,22 @@ def fetch_github_raw(
         html_url = file_content.html_url if hasattr(file_content, 'html_url') else f"https://github.com/{repo}/blob/{branch}/{path}"
         raw_url = f"https://raw.githubusercontent.com/{repo}/{branch}/{path}"
 
-        logger.info("[fetch_github_raw] Successfully fetched %d bytes", len(content))
+        size_bytes = len(content.encode('utf-8'))
+        token_count = estimate_tokens(content)
+
+        if token_count > MAX_CHUNK_TOKENS:
+            logger.warning(
+                "[fetch_github_raw] Content exceeds token ceiling (%d > %d tokens)",
+                token_count,
+                MAX_CHUNK_TOKENS
+            )
+        else:
+            logger.info("[fetch_github_raw] Successfully fetched %d bytes (%d tokens)", size_bytes, token_count)
 
         return {
             "content": content,
-            "size": len(content.encode('utf-8')),
+            "size": size_bytes,
+            "token_count": token_count,
             "sha": file_content.sha if hasattr(file_content, 'sha') else None,
             "url": html_url,
             "raw_url": raw_url,
@@ -346,6 +403,7 @@ def _error_response(url: str, error: str) -> Dict:
         "content": None,
         "url": url,
         "size_bytes": 0,
+        "token_count": 0,
         "error": error
     }
 
@@ -355,6 +413,7 @@ def _github_error_response(repo: str, path: str, branch: str, error: str) -> Dic
     return {
         "content": None,
         "size": 0,
+        "token_count": 0,
         "sha": None,
         "url": f"https://github.com/{repo}/blob/{branch}/{path}",
         "raw_url": f"https://raw.githubusercontent.com/{repo}/{branch}/{path}",

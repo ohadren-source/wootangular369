@@ -20,6 +20,14 @@ import json
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timezone
 
+from core.chunking_constants import (
+    estimate_tokens,
+    validate_chunk_size,
+    MAX_CHUNK_TOKENS,
+    TARGET_CHUNK_TOKENS
+)
+from core.safe_chunker import split_at_boundaries, ChunkTooBigError
+
 logger = logging.getLogger(__name__)
 
 
@@ -98,6 +106,20 @@ class FileModifier:
 
             logger.info("[FileModifier] Fetched %d bytes from GitHub", original_size)
 
+            # Step 1.5: Token validation - warn if file is large
+            content_tokens = estimate_tokens(content)
+            logger.info(
+                "[FileModifier] Content token estimate: %d tokens (ceiling: %d)",
+                content_tokens,
+                MAX_CHUNK_TOKENS
+            )
+
+            if content_tokens > MAX_CHUNK_TOKENS:
+                logger.warning(
+                    "[FileModifier] Content exceeds token ceiling - will require chunking "
+                    "with fallback strategies"
+                )
+
             # Step 2: Generate file ID and determine MIME type
             import uuid
             file_id = str(uuid.uuid4())
@@ -119,6 +141,7 @@ class FileModifier:
             # Step 4: Process each chunk
             processed_chunks = []
             consistency_patterns = []
+            prev_chunk_content = None
 
             for chunk_num, (chunk_content, chunk_number) in enumerate(chunks):
                 logger.info("[FileModifier] Processing chunk %d/%d", chunk_number, len(chunks))
@@ -131,7 +154,8 @@ class FileModifier:
                     filename=path.split("/")[-1],
                     mime_type=mime_type,
                     user_instruction=user_instruction,
-                    consistency_patterns=consistency_patterns
+                    consistency_patterns=consistency_patterns,
+                    prev_chunk_content=prev_chunk_content
                 )
 
                 if chunk_result["error"]:
@@ -153,6 +177,9 @@ class FileModifier:
                     )
                     if pattern:
                         consistency_patterns.append(pattern)
+
+                # Update context for next chunk
+                prev_chunk_content = chunk_result["content"]
 
             logger.info("[FileModifier] All %d chunks processed successfully", len(chunks))
 
@@ -207,16 +234,20 @@ class FileModifier:
         filename: str,
         mime_type: str,
         user_instruction: str,
-        consistency_patterns: List[str] = None
+        consistency_patterns: List[str] = None,
+        prev_chunk_content: str = None
     ) -> Dict:
         """
         Send a single chunk to Claude for modification.
+
+        Enforces token ceiling with pre-send validation.
 
         Returns:
             {
                 "chunk_number": int,
                 "content": str,  # modified content
                 "hash": str,     # SHA256 of modified content
+                "token_count": int,  # tokens in this chunk
                 "error": str or None
             }
         """
@@ -225,14 +256,89 @@ class FileModifier:
                 "chunk_number": chunk_number,
                 "content": chunk_content,
                 "hash": hashlib.sha256(chunk_content.encode()).hexdigest(),
+                "token_count": estimate_tokens(chunk_content),
                 "error": "Claude client not configured"
             }
 
         try:
+            # Pre-send validation: Check token count
+            is_valid, token_message, token_count = validate_chunk_size(
+                chunk_content,
+                chunk_number=chunk_number
+            )
+
+            if not is_valid:
+                # Chunk exceeds ceiling - try emergency fallback splitting
+                logger.error(
+                    "[FileModifier] Chunk %d failed validation, attempting fallback split",
+                    chunk_number
+                )
+                try:
+                    sub_chunks = split_at_boundaries(
+                        chunk_content,
+                        target_tokens=TARGET_CHUNK_TOKENS,
+                        mime_type=mime_type
+                    )
+                    logger.warning(
+                        "[FileModifier] Fallback split created %d sub-chunks, "
+                        "reprocessing as separate requests",
+                        len(sub_chunks)
+                    )
+                    # Process each sub-chunk recursively
+                    all_results = []
+                    for sub_num, sub_content in enumerate(sub_chunks):
+                        sub_result = await self._process_chunk(
+                            file_id=file_id,
+                            chunk_number=f"{chunk_number}.{sub_num}",
+                            chunk_total=chunk_total,
+                            chunk_content=sub_content,
+                            filename=filename,
+                            mime_type=mime_type,
+                            user_instruction=user_instruction,
+                            consistency_patterns=consistency_patterns,
+                            prev_chunk_content=prev_chunk_content
+                        )
+                        if sub_result["error"]:
+                            return sub_result
+                        all_results.append(sub_result)
+
+                    # Combine sub-chunk results
+                    combined_content = "\n".join([r["content"] for r in all_results])
+                    combined_hash = hashlib.sha256(combined_content.encode()).hexdigest()
+                    combined_tokens = sum(r.get("token_count", 0) for r in all_results)
+
+                    logger.info(
+                        "[FileModifier] Chunk %d completed via fallback (%d tokens total)",
+                        chunk_number,
+                        combined_tokens
+                    )
+
+                    return {
+                        "chunk_number": chunk_number,
+                        "content": combined_content,
+                        "hash": combined_hash,
+                        "token_count": combined_tokens,
+                        "error": None
+                    }
+
+                except ChunkTooBigError as e:
+                    return {
+                        "chunk_number": chunk_number,
+                        "content": chunk_content,
+                        "hash": hashlib.sha256(chunk_content.encode()).hexdigest(),
+                        "token_count": token_count,
+                        "error": f"Emergency fallback split failed: {str(e)}"
+                    }
+
             # Build instruction for this chunk
             from core.file_processor import build_chunk_instruction, build_dependencies
 
             dependencies = build_dependencies(chunk_number, chunk_total)
+
+            # Extract 500-char context from previous chunk if available
+            context_from_prev = None
+            if prev_chunk_content:
+                context_from_prev = prev_chunk_content[-500:] if len(prev_chunk_content) > 500 else prev_chunk_content
 
             instruction = build_chunk_instruction(
                 file_id=file_id,
@@ -242,12 +348,16 @@ class FileModifier:
                 original_size_mb=len(chunk_content.encode()) / 1024 / 1024,
                 user_instruction=user_instruction or "Process this content",
                 mime_type=mime_type,
-                context_from_prev=None,  # TODO: Last 500 chars from previous chunk
+                context_from_prev=context_from_prev,
                 dependencies=dependencies,
                 prior_changes=consistency_patterns[-3:] if consistency_patterns else None
             )
 
-            logger.info("[FileModifier] Sending chunk %d to Claude...", chunk_number)
+            logger.info(
+                "[FileModifier] Sending chunk %d to Claude (%d tokens)...",
+                chunk_number,
+                token_count
+            )
 
             # Call Claude API
             message = self.claude.messages.create(
@@ -263,13 +373,21 @@ class FileModifier:
 
             modified_content = message.content[0].text.strip()
             modified_hash = hashlib.sha256(modified_content.encode()).hexdigest()
+            modified_tokens = estimate_tokens(modified_content)
 
-            logger.info("[FileModifier] Chunk %d processed OK (%d bytes)", chunk_number, len(modified_content))
+            logger.info(
+                "[FileModifier] Chunk %d processed OK (%d bytes -> %d bytes, %d tokens)",
+                chunk_number,
+                len(chunk_content.encode()),
+                len(modified_content.encode()),
+                modified_tokens
+            )
 
             return {
                 "chunk_number": chunk_number,
                 "content": modified_content,
                 "hash": modified_hash,
+                "token_count": modified_tokens,
                 "error": None
             }
 
@@ -279,6 +397,7 @@ class FileModifier:
                 "chunk_number": chunk_number,
                 "content": chunk_content,
                 "hash": hashlib.sha256(chunk_content.encode()).hexdigest(),
+                "token_count": estimate_tokens(chunk_content),
                 "error": str(e)
             }
 
