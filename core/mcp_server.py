@@ -115,14 +115,55 @@ _TOOLS = [
         }
     },
     {
-        "name": "fetch_webpage",
-        "description": "Fetch and read full webpage content. Extracts text from HTML, handles redirects, returns plaintext.",
+        "name": "fetch_httpx",
+        "description": "Fetch raw content from any URL via async httpx. Returns exact response.text with no processing. Fast and reliable.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "url": {"type": "string", "description": "The URL to fetch and read"}
+                "url": {"type": "string", "description": "The URL to fetch (adds https:// if missing protocol)"},
+                "timeout": {"type": "integer", "description": "Request timeout in seconds (default: 15)"},
+                "headers": {"type": "object", "description": "Optional custom HTTP headers"}
             },
             "required": ["url"]
+        }
+    },
+    {
+        "name": "fetch_webpage",
+        "description": "Fetch and extract main content from webpage. Uses trafilatura for extraction, falls back to raw content if needed.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "The URL to fetch and extract"},
+                "timeout": {"type": "integer", "description": "Request timeout in seconds (default: 15)"}
+            },
+            "required": ["url"]
+        }
+    },
+    {
+        "name": "fetch_pyppeteer",
+        "description": "Fetch webpage via headless Chrome (pyppeteer). Executes JavaScript and handles dynamic content.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "The URL to fetch"},
+                "wait_selector": {"type": "string", "description": "Optional CSS selector to wait for before returning"},
+                "timeout": {"type": "integer", "description": "Page load timeout in seconds (default: 30)"}
+            },
+            "required": ["url"]
+        }
+    },
+    {
+        "name": "fetch_github_raw",
+        "description": "Fetch raw file content from GitHub. Works with public repos (no token) and private repos (with GitHub token).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string", "description": "Repository in format 'owner/repo-name', e.g. 'ohadren-source/wootangular369'"},
+                "path": {"type": "string", "description": "File path within repo, e.g. 'static/testes.html' or 'src/index.js'"},
+                "branch": {"type": "string", "description": "Branch name (default: 'main')"},
+                "token": {"type": "string", "description": "GitHub personal access token (optional, for private repos or higher rate limits)"}
+            },
+            "required": ["repo", "path"]
         }
     }
 ]
@@ -280,7 +321,10 @@ class MCPServer:
             "solar8_analyze_image":     self._tool_analyze_image,
             "solar8_swarm_status":      self._tool_swarm_status,
             "solar8_discover_agent":    self._tool_discover_agent,
+            "fetch_httpx":              self._tool_fetch_httpx,
             "fetch_webpage":            self._tool_fetch_webpage,
+            "fetch_pyppeteer":          self._tool_fetch_pyppeteer,
+            "fetch_github_raw":         self._tool_fetch_github_raw,
         }.get(name)
 
         if handler is None:
@@ -503,18 +547,91 @@ class MCPServer:
         }
         return [{"type": "text", "text": json.dumps(payload)}]
 
-    def _tool_fetch_webpage(self, args):
+    def _tool_fetch_httpx(self, args):
+        """Fetch raw content from any URL via httpx. Returns exact response text."""
         url = (args.get("url") or "").strip()
+        timeout = args.get("timeout", 15)
+        headers = args.get("headers")
+
         if not url:
             raise _MCPError(_ERR_PARAMS, "url is required")
+
         try:
-            from core.web_scraper import WebFetcher
-            fetcher = WebFetcher()
-            result = fetcher.fetch(url)
+            import asyncio
+            from core.file_fetchers import fetch_httpx as _fetch_httpx
+
+            loop = asyncio.new_event_loop()
+            result = loop.run_until_complete(_fetch_httpx(url, timeout=timeout, headers=headers))
+            loop.close()
+
+            return [{"type": "text", "text": json.dumps(result)}]
+        except Exception as exc:
+            logger.error("[MCP] fetch_httpx error: %s", exc)
+            raise _MCPError(_ERR_INTERNAL, f"Failed to fetch: {exc}")
+
+    def _tool_fetch_webpage(self, args):
+        """Fetch and extract main content from webpage using trafilatura."""
+        url = (args.get("url") or "").strip()
+        timeout = args.get("timeout", 15)
+
+        if not url:
+            raise _MCPError(_ERR_PARAMS, "url is required")
+
+        try:
+            import asyncio
+            from core.file_fetchers import fetch_webpage as _fetch_webpage
+
+            loop = asyncio.new_event_loop()
+            result = loop.run_until_complete(_fetch_webpage(url, timeout=timeout))
+            loop.close()
+
             return [{"type": "text", "text": json.dumps(result)}]
         except Exception as exc:
             logger.error("[MCP] fetch_webpage error: %s", exc)
             raise _MCPError(_ERR_INTERNAL, f"Failed to fetch webpage: {exc}")
+
+    def _tool_fetch_pyppeteer(self, args):
+        """Fetch webpage via headless Chrome (pyppeteer). Executes JavaScript."""
+        url = (args.get("url") or "").strip()
+        wait_selector = args.get("wait_selector")
+        timeout = args.get("timeout", 30)
+
+        if not url:
+            raise _MCPError(_ERR_PARAMS, "url is required")
+
+        try:
+            import asyncio
+            from core.file_fetchers import fetch_pyppeteer as _fetch_pyppeteer
+
+            loop = asyncio.new_event_loop()
+            result = loop.run_until_complete(_fetch_pyppeteer(url, wait_selector=wait_selector, timeout=timeout))
+            loop.close()
+
+            return [{"type": "text", "text": json.dumps(result)}]
+        except Exception as exc:
+            logger.error("[MCP] fetch_pyppeteer error: %s", exc)
+            raise _MCPError(_ERR_INTERNAL, f"Failed to fetch with pyppeteer: {exc}")
+
+    def _tool_fetch_github_raw(self, args):
+        """Fetch raw file content from GitHub."""
+        repo = (args.get("repo") or "").strip()
+        path = (args.get("path") or "").strip()
+        branch = (args.get("branch") or "main").strip()
+        token = args.get("token")
+
+        if not repo or "/" not in repo:
+            raise _MCPError(_ERR_PARAMS, "repo is required (format: 'owner/repo-name')")
+        if not path:
+            raise _MCPError(_ERR_PARAMS, "path is required")
+
+        try:
+            from core.file_fetchers import fetch_github_raw as _fetch_github_raw
+
+            result = _fetch_github_raw(repo=repo, path=path, branch=branch, token=token)
+            return [{"type": "text", "text": json.dumps(result)}]
+        except Exception as exc:
+            logger.error("[MCP] fetch_github_raw error: %s", exc)
+            raise _MCPError(_ERR_INTERNAL, f"Failed to fetch from GitHub: {exc}")
 
     # ------------------------------------------------------------------
     # Helpers

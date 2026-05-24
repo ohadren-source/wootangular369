@@ -6,3 +6,7 @@ gunicorn
 agent-framework
 agent-framework-a2a
 a2a
+httpx
+PyGithub
+pyppeteer
+trafilatura
