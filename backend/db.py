@@ -32,12 +32,12 @@ class Database:
             # Turso: use libsql_client
             logger.info(f"[DB] Attempting Turso connection to {self.db_url[:50]}... with token: {'set' if self.auth_token else 'NOT SET'}")
             try:
-                import libsql_client
-                self.conn = libsql_client.create_client(
+                import libsql_python as libsql
+                self.conn = libsql.connect(
                     url=self.db_url,
                     auth_token=self.auth_token
                 )
-                logger.info("[DB] Connected to Turso (HranaClient)")
+                logger.info("[DB] Connected to Turso (libsql-python)")
             except (ImportError, ModuleNotFoundError):
                 logger.warning("libsql_client not available, falling back to SQLite")
                 self.is_turso = False
@@ -66,9 +66,9 @@ class Database:
         """Close database connection."""
         if self.conn:
             if self.is_turso:
-                # HranaClient: explicitly close the connection
+                # libsql-python uses synchronous close
                 try:
-                    await self.conn.close()
+                    self.conn.close()
                 except Exception as e:
                     logger.warning(f"[DB] Turso close warning: {e}")
                 finally:
