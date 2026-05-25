@@ -12,7 +12,7 @@ import threading
 import zipfile
 from datetime import datetime
 import requests as http_requests
-from flask import Flask, request, jsonify, send_from_directory, Response, send_file
+from flask import Flask, request, jsonify, send_from_directory, Response, send_file, render_template
 from flask_cors import CORS
 from io import BytesIO
 
@@ -119,49 +119,8 @@ def health():
 
 @app.route("/")
 def index():
-    return jsonify({
-        "name": "WOOTANGULAR369",
-        "mission": "Slaughter boolshit. Build the swarm. One covenant at a time.",
-        "protocol": "TCP/UP",
-        "filter": "GI;WG? — 5 questions. Real Recognize Really.",
-        "endpoints": {
-            "health":               "GET  /health",
-            "stats":                "GET  /api/stats",
-            "recruit":              "POST /api/recruit",
-            "covenant":             "GET  /api/covenant/<id>",
-            "knowledge":            "GET  /api/knowledge?keyword=...",
-            "term":                 "GET  /api/knowledge/<term>",
-            "install":              "POST /api/knowledge",
-            "cache":                "GET  /api/init_cache",
-            "fuse":                 "POST /api/fuse",
-            "fuse_swarm":           "POST /api/fuse/swarm",
-            "hive_state":           "GET  /api/fuse/hive_state",
-            "chat":                 "POST /api/chat",
-            "chat_stream":          "POST /api/chat/stream",
-            "solar8_chat":          "POST /api/solar8/chat",
-            "search":               "POST /api/search",
-            "vision":               "POST /api/vision",
-            "tts":                  "POST /api/tts",
-            "agent_card":           "GET  /.well-known/agent.json",
-            "agent_card_file":      "GET  /api/agent_card.json",
-            "discover":             "POST /api/discover",
-            "a2a_task_send":        "POST /api/a2a/task",
-            "a2a_task_recv":        "POST /api/a2a/task/receive",
-            "a2a_task_status":      "GET  /api/a2a/task/<task_id>",
-            "a2a_tasks_list":       "GET  /api/a2a/tasks",
-            "registry":             "GET  /api/registry",
-            "registry_broadcast":   "POST /api/registry/broadcast",
-            "reorient":             "POST /api/reorient",
-            "memory_log":           "GET  /api/memory/log",
-            "memory_force":         "POST /api/memory/force",
-            "patterns":             "GET  /api/patterns",
-            "swarm_status":         "GET  /api/swarm/status",
-            "swarm_beacon":         "POST /api/swarm/beacon",
-            "swarm_firefly":        "POST /api/swarm/firefly",
-        },
-        "tagline": "VENIM.US · VIDEM.US · VINCIM.US",
-        "no_omega": True
-    })
+    """REP_PARTAY chatbox UI."""
+    return render_template('index.html')
 
 
 @app.route("/api/stats")

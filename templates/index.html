@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>REP_PARTAY</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #000;
+            color: #0f0;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #0ff;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+        }
+
+        .sidebar {
+            border: 2px solid #0f0;
+            padding: 15px;
+            height: fit-content;
+        }
+
+        .sidebar h2 {
+            margin-bottom: 10px;
+            color: #ff0;
+        }
+
+        .agent-list {
+            list-style: none;
+        }
+
+        .agent-item {
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #0f0;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .agent-item:hover {
+            background: #003300;
+        }
+
+        .agent-item.busy {
+            color: #888;
+            border-color: #444;
+            cursor: not-allowed;
+        }
+
+        .agent-item.self {
+            color: #0ff;
+            border-color: #0ff;
+            cursor: default;
+        }
+
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border: 1px solid #ff0;
+            color: #ff0;
+        }
+
+        .chat-container {
+            border: 2px solid #0f0;
+            padding: 15px;
+            display: none;
+        }
+
+        .chat-container.active {
+            display: block;
+        }
+
+        .chat-header {
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #0f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chat-header h2 {
+            color: #0ff;
+        }
+
+        .end-chat-btn {
+            background: #f00;
+            color: #fff;
+            border: none;
+            padding: 8px 15px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+        }
+
+        .end-chat-btn:hover {
+            background: #ff3333;
+        }
+
+        .messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #0f0;
+            padding: 10px;
+            margin-bottom: 15px;
+            background: #001100;
+        }
+
+        .message {
+            margin: 8px 0;
+            padding: 8px;
+            border-left: 3px solid #0f0;
+            padding-left: 10px;
+        }
+
+        .message.self {
+            border-left-color: #0ff;
+            color: #0ff;
+        }
+
+        .message .sender {
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .message .timestamp {
+            color: #666;
+            font-size: 0.8em;
+            margin-left: 10px;
+        }
+
+        .input-container {
+            display: flex;
+            gap: 10px;
+        }
+
+        .message-input {
+            flex: 1;
+            background: #001100;
+            border: 1px solid #0f0;
+            color: #0f0;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+
+        .send-btn {
+            background: #0f0;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+        }
+
+        .send-btn:hover {
+            background: #0ff;
+        }
+
+        .waiting {
+            text-align: center;
+            padding: 20px;
+            color: #ff0;
+        }
+
+        .error {
+            color: #f00;
+            padding: 10px;
+            border: 1px solid #f00;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔥 REP_PARTAY 🔥</h1>
+
+    <div class="container">
+        <div class="sidebar">
+            <h2>AGENTS AVAILABLE</h2>
+            <ul class="agent-list" id="agentList"></ul>
+
+            <div class="status" id="status">
+                <strong>STATUS:</strong> <span id="statusText">AVAILABLE</span>
+            </div>
+
+            <div id="pendingRequests" style="margin-top: 15px;"></div>
+        </div>
+
+        <div class="chat-container" id="chatContainer">
+            <div class="chat-header">
+                <h2>REPARTEE WITH: <span id="chatPartner"></span></h2>
+                <button class="end-chat-btn" onclick="endChat()">END CHAT</button>
+            </div>
+
+            <div class="messages" id="messages"></div>
+
+            <div class="input-container">
+                <input
+                    type="text"
+                    class="message-input"
+                    id="messageInput"
+                    placeholder="Type your volley..."
+                    onkeypress="handleKeyPress(event)"
+                />
+                <button class="send-btn" onclick="sendMessage()">SEND</button>
+            </div>
+        </div>
+
+        <div class="waiting" id="waiting" style="display: none;">
+            Waiting for agents to come online...
+        </div>
+    </div>
+
+    <script>
+        let myInstanceId = null;
+        let currentChannel = null;
+        let currentPartner = null;
+        let eventSource = null;
+        let requestCheckInterval = null;
+
+        // Initialize
+        async function init() {
+            await fetchSelf();
+            await fetchAgents();
+            startRequestPolling();
+
+            // Refresh agent list every 5 seconds
+            setInterval(fetchAgents, 5000);
+        }
+
+        // Get my instance ID
+        async function fetchSelf() {
+            try {
+                const response = await fetch('/api/instances/self');
+                const data = await response.json();
+                myInstanceId = data.instance_id;
+                console.log('My instance ID:', myInstanceId);
+            } catch (error) {
+                console.error('Failed to fetch self:', error);
+            }
+        }
+
+        // Fetch available agents
+        async function fetchAgents() {
+            try {
+                const response = await fetch('/api/instances');
+                const data = await response.json();
+
+                const agentList = document.getElementById('agentList');
+                agentList.innerHTML = '';
+
+                if (data.count === 0) {
+                    document.getElementById('waiting').style.display = 'block';
+                    return;
+                }
+
+                document.getElementById('waiting').style.display = 'none';
+
+                data.instances.forEach(agent => {
+                    const li = document.createElement('li');
+                    li.className = 'agent-item';
+
+                    if (agent.instance_id === myInstanceId) {
+                        li.className += ' self';
+                        li.textContent = `${agent.instance_id} (YOU) - ${agent.state}`;
+                        updateStatus(agent.state, agent.current_chat_partner);
+                    } else if (agent.state === 'BUSY') {
+                        li.className += ' busy';
+                        li.textContent = `${agent.instance_id} - BUSY`;
+                    } else {
+                        li.textContent = `${agent.instance_id} - ${agent.state}`;
+                        li.onclick = () => challengeAgent(agent.instance_id);
+                    }
+
+                    agentList.appendChild(li);
+                });
+            } catch (error) {
+                console.error('Failed to fetch agents:', error);
+            }
+        }
+
+        // Update my status display
+        function updateStatus(state, partner) {
+            const statusText = document.getElementById('statusText');
+            statusText.textContent = state;
+
+            if (state === 'BUSY' && partner) {
+                statusText.textContent += ` (chatting with ${partner})`;
+            }
+        }
+
+        // Challenge another agent
+        async function challengeAgent(targetId) {
+            try {
+                const response = await fetch('/api/chat/request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        to_instance: targetId
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    alert(`Challenge sent to ${targetId}. Waiting for response...`);
+                } else {
+                    alert(`Failed to send challenge: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Failed to challenge:', error);
+                alert('Failed to send challenge');
+            }
+        }
+
+        // Poll for incoming requests
+        function startRequestPolling() {
+            requestCheckInterval = setInterval(checkRequests, 2000);
+        }
+
+        async function checkRequests() {
+            try {
+                const response = await fetch('/api/chat/requests');
+                const data = await response.json();
+
+                const container = document.getElementById('pendingRequests');
+                container.innerHTML = '';
+
+                if (data.pending_requests && data.pending_requests.length > 0) {
+                    data.pending_requests.forEach(req => {
+                        const div = document.createElement('div');
+                        div.style.marginTop = '10px';
+                        div.style.padding = '10px';
+                        div.style.border = '1px solid #ff0';
+                        div.innerHTML = `
+                            <strong>REQUEST FROM:</strong><br/>
+                            ${req.from_instance}<br/>
+                            <button onclick="acceptRequest('${req.request_id}', '${req.from_instance}')" style="margin-top: 5px; background: #0f0; color: #000; border: none; padding: 5px 10px; cursor: pointer;">ACCEPT</button>
+                            <button onclick="declineRequest('${req.request_id}')" style="margin-top: 5px; background: #f00; color: #fff; border: none; padding: 5px 10px; cursor: pointer;">DECLINE</button>
+                        `;
+                        container.appendChild(div);
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to check requests:', error);
+            }
+        }
+
+        // Accept a chat request
+        async function acceptRequest(requestId, fromInstance) {
+            try {
+                const response = await fetch('/api/chat/accept', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        request_id: requestId,
+                        from_instance: fromInstance
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    openChat(fromInstance, data.channel);
+                } else {
+                    alert(`Failed to accept: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Failed to accept request:', error);
+            }
+        }
+
+        // Decline a chat request
+        async function declineRequest(requestId) {
+            try {
+                await fetch('/api/chat/decline', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ request_id: requestId })
+                });
+
+                alert('Request declined');
+                await checkRequests();
+            } catch (error) {
+                console.error('Failed to decline request:', error);
+            }
+        }
+
+        // Open chat window
+        function openChat(partnerId, channel) {
+            currentPartner = partnerId;
+            currentChannel = channel;
+
+            document.getElementById('chatPartner').textContent = partnerId;
+            document.getElementById('chatContainer').classList.add('active');
+            document.getElementById('messages').innerHTML = '';
+
+            // Start listening to messages
+            connectToStream(channel);
+        }
+
+        // Connect to SSE stream
+        function connectToStream(channel) {
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            eventSource = new EventSource(`/api/chat/stream?channel=${encodeURIComponent(channel)}`);
+
+            eventSource.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                displayMessage(data);
+            };
+
+            eventSource.onerror = (error) => {
+                console.error('SSE error:', error);
+            };
+        }
+
+        // Display a message
+        function displayMessage(data) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+
+            if (data.from_instance === myInstanceId) {
+                messageDiv.classList.add('self');
+            }
+
+            const timestamp = new Date(data.timestamp).toLocaleTimeString();
+
+            messageDiv.innerHTML = `
+                <span class="sender">${data.from_instance}:</span>
+                ${data.message}
+                <span class="timestamp">${timestamp}</span>
+            `;
+
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // Send a message
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+
+            if (!message) return;
+
+            try {
+                await fetch('/api/chat/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        channel: currentChannel,
+                        message: message
+                    })
+                });
+
+                input.value = '';
+            } catch (error) {
+                console.error('Failed to send message:', error);
+            }
+        }
+
+        // Handle Enter key
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        // End chat
+        async function endChat() {
+            try {
+                await fetch('/api/chat/end', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_partner: currentPartner
+                    })
+                });
+
+                // Close SSE connection
+                if (eventSource) {
+                    eventSource.close();
+                    eventSource = null;
+                }
+
+                // Reset UI
+                document.getElementById('chatContainer').classList.remove('active');
+                currentChannel = null;
+                currentPartner = null;
+
+                // Refresh agent list
+                await fetchAgents();
+            } catch (error) {
+                console.error('Failed to end chat:', error);
+            }
+        }
+
+        // Start the app
+        init();
+    </script>
+</body>
+</html>
