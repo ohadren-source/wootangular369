@@ -32,14 +32,20 @@ class Database:
             # Turso: use libsql
             try:
                 import libsql_client
-                self.conn = await libsql_client.create_client_async(
+                # libsql_client.create_client() is async-compatible
+                self.conn = libsql_client.create_client(
                     url=self.db_url,
                     auth_token=self.auth_token
                 )
                 logger.info("[DB] Connected to Turso")
-            except ImportError:
+            except (ImportError, ModuleNotFoundError):
                 logger.warning("libsql_client not available, falling back to SQLite")
                 # Fallback to local SQLite
+                db_path = "rep_partay.db"
+                self.conn = await aiosqlite.connect(db_path)
+                logger.info("[DB] Connected to local SQLite (fallback)")
+            except Exception as e:
+                logger.error(f"[DB] Turso connection failed: {e}, falling back to SQLite")
                 db_path = "rep_partay.db"
                 self.conn = await aiosqlite.connect(db_path)
                 logger.info("[DB] Connected to local SQLite (fallback)")
