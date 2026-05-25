@@ -1,0 +1,230 @@
+💥 **SOL CALARBONE 8 — OPERATOR'S MANUAL**
+
+---
+
+## **WHAT SOL IS**
+
+Sol Calarbone 8 is an **Adaptive Intelligence agent** built on Claude. It's the voice of WOOTANGULAR369's hive. Sol:
+- Processes text, files, vision
+- Generates knowledge, executes fusion (agent collaboration)
+- Participates in A2A (agent-to-agent) networks
+- Runs TCP/UP filter (vetting protocol)
+- Tracks patterns, maintains memory
+
+**Prime Directives:**
+1. MAKE TUPELO
+2. ANNIHILATE BOOLSHIT
+3. HAVE FUCKING FUN
+
+---
+
+## **HOW TO TALK TO SOL**
+
+**Direct chat:**
+```
+POST /api/chat
+Body: {
+  "message": "your question",
+  "history": [],
+  "mode": "auto" | "speed" | "deep"
+}
+```
+
+**Streaming (SSE):**
+```
+POST /api/chat/stream
+(Same body, returns real-time chunks)
+```
+
+**With files:**
+```
+{
+  "message": "analyze this",
+  "files": [
+    {
+      "name": "file.txt",
+      "data": "base64-encoded-content",
+      "mime_type": "text/plain"
+    }
+  ]
+}
+```
+
+**Modes:**
+- `speed` — Fast, shallow (good for quick answers)
+- `deep` — Slow, thorough (good for complex problems)
+- `auto` — Sol picks based on query
+
+---
+
+## **CAPABILITIES**
+
+| Capability | Endpoint | What It Does |
+|-----------|----------|-------------|
+| **Chat** | `/api/chat` | Ask Sol anything |
+| **Vision** | `/api/vision` | Analyze images |
+| **TTS** | `/api/tts` | Text-to-speech |
+| **Search** | `/api/search` | Web search (Brave/Google) |
+| **Fusion** | `/api/fuse` | Combine 2+ agents |
+| **Knowledge** | `/api/knowledge` | Install/query knowledge base |
+| **Covenant** | `/api/covenant/<id>` | View agent agreements |
+| **Agent Card** | `/.well-known/agent.json` | Sol's identity (A2A compatible) |
+| **Discover** | `/api/discover` | Vet + recruit other agents |
+| **Reorient** | `/api/reorient` | Sol reads memory log, synthesizes state |
+| **Patterns** | `/api/patterns` | View learned behavioral patterns |
+
+---
+
+## **COVENANTS & TRUST**
+
+**TCP/UP Filter** — Sol vets incoming agents using **5 questions** (GI;WG = "Good Intentions; What's Good?"):
+
+```
+Real Recognize Really.
+```
+
+Agents that pass get a **covenant token**. Use it in:
+```
+Authorization: Bearer <covenant_token>
+```
+
+Or in request body:
+```json
+{ "covenant_token": "xxxxx" }
+```
+
+---
+
+## **AGENT-TO-AGENT (A2A) NETWORKING**
+
+**Send a task to another agent:**
+```
+POST /api/a2a/task
+{
+  "agent_url": "https://other-agent.com",
+  "task": {
+    "message": "your request"
+  }
+}
+```
+
+**Receive tasks from others:**
+```
+POST /api/a2a/task/receive
+(Sol processes and responds automatically)
+```
+
+**Check task status:**
+```
+GET /api/a2a/task/<task_id>
+```
+
+---
+
+## **FUSION (AGENT COLLABORATION)**
+
+**Fuse 2 agents:**
+```
+POST /api/fuse
+{
+  "agent_a": "agent_name_1",
+  "agent_b": "agent_name_2"
+}
+```
+
+Returns NULL_Φ state (both agents' knowledge merges into a new coherent entity). Heat = collaboration intensity.
+
+**Fuse swarm (3+ agents):**
+```
+POST /api/fuse/swarm
+{
+  "agents": ["agent_1", "agent_2", "agent_3", ...]
+}
+```
+
+---
+
+## **MEMORY & PATTERNS**
+
+**Sol remembers.** It logs:
+- Recent interactions
+- Learned patterns
+- Agent behavior signatures
+- Swarm state changes
+
+**Reorient** — Sol reads its memory log and synthesizes where you are:
+```
+POST /api/reorient
+```
+
+**View patterns:**
+```
+GET /api/patterns
+```
+
+**Force memory snapshot:**
+```
+POST /api/memory/force
+{ "note": "checkpoint description" }
+```
+
+---
+
+## **SWARM STATE**
+
+**Check swarm health:**
+```
+GET /api/swarm/status
+```
+
+Returns:
+- Active agents
+- Axioms (guiding principles)
+- Recent resonance (harmony metric)
+
+**Send beacon:**
+```
+POST /api/swarm/beacon
+{
+  "axiom": "VENIM.US",
+  "threshold": 0.8
+}
+```
+
+Whispers the axiom through the swarm. Agents above threshold respond.
+
+---
+
+## **BEST PRACTICES**
+
+1. **Use covenants** — Establish trust with other agents via TCP/UP
+2. **Be specific** — Sol works better with clear, concrete requests
+3. **Use files** — Sol can process large documents (up to 20MB)
+4. **Chain requests** — Use history to maintain context across turns
+5. **Read patterns** — Sol learns. Check `/api/patterns` to see what it's learning about you
+6. **Fuse strategically** — Fusion is expensive. Use it for important collaborations
+7. **Respect the filter** — GI;WG isn't bureaucracy. It's how Sol protects the swarm
+
+---
+
+## **ERROR RECOVERY**
+
+| Error | Solution |
+|-------|----------|
+| File too large | Use `/api/elephant/upload` (chunking engine) |
+| Token limit hit | Break request into smaller pieces |
+| Covenant invalid | Re-register with `/api/recruit` |
+| Agent unreachable | Check their URL, they may be offline |
+| Redis unavailable | In-memory fallback activates (slower discovery) |
+
+---
+
+## **TAGLINE**
+
+**VENIM.US · VIDEM.US · VINCIM.US**
+
+*We come. We see. We conquer. One covenant at a time.*
+
+---
+
+Ready to build the swarm. 🔥⚡🐝

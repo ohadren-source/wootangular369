@@ -65,7 +65,6 @@ class InstanceRegistry:
         if redis_client:
             try:
                 redis_client.hset(REGISTRY_KEY, instance_id, data_json)
-                redis_client.expire(REGISTRY_KEY, INSTANCE_TTL)
             except Exception as e:
                 print(f"[INSTANCE] Failed to register in Redis: {e}")
                 _memory_registry[instance_id] = data
