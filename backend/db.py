@@ -119,8 +119,22 @@ class Database:
 
         try:
             if self.is_turso:
-                # Turso: use batch() for multiple statements (more efficient than separate execute() calls)
-                await self.conn.batch([agents_schema, conversations_schema, messages_schema])
+                # Turso: execute each schema separately (batch() may not be available)
+                # Each CREATE TABLE IF NOT EXISTS is idempotent
+                try:
+                    await self.conn.execute(agents_schema)
+                except Exception as e:
+                    logger.debug(f"[DB] Agents table init: {e}")
+
+                try:
+                    await self.conn.execute(conversations_schema)
+                except Exception as e:
+                    logger.debug(f"[DB] Conversations table init: {e}")
+
+                try:
+                    await self.conn.execute(messages_schema)
+                except Exception as e:
+                    logger.debug(f"[DB] Messages table init: {e}")
             else:
                 # SQLite: use cursor
                 async with self.conn.cursor() as cursor:
