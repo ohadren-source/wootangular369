@@ -15,7 +15,7 @@ bind = "0.0.0.0:8080"
 # WORKER CONFIGURATION
 # ============================================================================
 
-workers = 1  # Single worker = stateful agent session (no session splitting)
+workers = 2  # Two workers = two independent Sol instances for P2P testing
 worker_class = "sync"  # Blocking I/O for tool calls and async event loops
 worker_connections = 1000
 
