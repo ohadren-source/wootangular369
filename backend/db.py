@@ -218,15 +218,10 @@ class Database:
         status: str = "active"
     ):
         """Register a new agent."""
+        now = datetime.utcnow().isoformat()
         sql = """
-            INSERT INTO agents (id, name, url, agent_card, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                name = excluded.name,
-                url = excluded.url,
-                agent_card = excluded.agent_card,
-                status = excluded.status,
-                updated_at = ?
+            INSERT OR REPLACE INTO agents (id, name, url, agent_card, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """
         params = (
             agent_id,
@@ -234,8 +229,8 @@ class Database:
             url,
             json.dumps(agent_card) if agent_card else None,
             status,
-            datetime.utcnow().isoformat(),
-            datetime.utcnow().isoformat()
+            now,
+            now
         )
         await self._execute(sql, params)
 
