@@ -818,7 +818,7 @@
 
     // Show greeting message
     function showGreeting() {
-      const greeting = `Hey ${USER_NAME}, what's going on? 😊`;
+      const greeting = USER_NAME === "Ohad" ? `Hello Ohad` : `Hello Mate`;
 
       // Add greeting as first message
       const botRow = document.createElement('div');
