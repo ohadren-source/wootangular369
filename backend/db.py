@@ -123,7 +123,8 @@ class Database:
                 # Turso: execute each schema separately (batch() may not be available)
                 # Each CREATE TABLE IF NOT EXISTS is idempotent
                 try:
-                    await self.conn.execute(agents_schema)
+                    result = await self.conn.execute(agents_schema)
+                    logger.debug(f"[DB] Agents table created")
                 except Exception as e:
                     logger.debug(f"[DB] Agents table init: {e}")
 
@@ -151,7 +152,10 @@ class Database:
         try:
             if self.is_turso:
                 # execute() is async, await directly
-                result = await self.conn.execute(sql, params)
+                if params:
+                    result = await self.conn.execute(sql, params)
+                else:
+                    result = await self.conn.execute(sql)
                 return result
             else:
                 # SQLite
@@ -168,7 +172,10 @@ class Database:
         try:
             if self.is_turso:
                 # execute() is async, await directly
-                result = await self.conn.execute(sql, params)
+                if params:
+                    result = await self.conn.execute(sql, params)
+                else:
+                    result = await self.conn.execute(sql)
                 # libsql_client returns a ResultSet with rows attribute
                 rows = result.rows if hasattr(result, 'rows') else []
                 return rows[0] if rows else None
@@ -185,7 +192,10 @@ class Database:
         try:
             if self.is_turso:
                 # execute() is async, await directly
-                result = await self.conn.execute(sql, params)
+                if params:
+                    result = await self.conn.execute(sql, params)
+                else:
+                    result = await self.conn.execute(sql)
                 return result.rows if hasattr(result, 'rows') else []
             else:
                 async with self.conn.cursor() as cursor:
