@@ -31,11 +31,12 @@ import core.pattern_tracker as pattern_tracker
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
-CORS(app)
-
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC_DIR = os.path.join(ROOT_DIR, "static")
+TEMPLATES_DIR = os.path.join(ROOT_DIR, "templates")
+
+app = Flask(__name__, template_folder=TEMPLATES_DIR)
+CORS(app)
 
 SOLAR8_URL = os.getenv("SOLAR8_URL", "https://web-production-8b53fe.up.railway.app")
 
