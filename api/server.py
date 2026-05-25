@@ -12,6 +12,7 @@ import threading
 import zipfile
 from datetime import datetime
 import requests as http_requests
+import anthropic
 from flask import Flask, request, jsonify, send_from_directory, Response, send_file, render_template
 from flask_cors import CORS
 from io import BytesIO
@@ -341,7 +342,32 @@ def swarm_firefly():
 @app.route("/api/chat", methods=["POST"])
 def chat():
     if not solar8.online:
-        return jsonify({"status": "error", "message": "Sol Calarbone 8 offline — API key not configured."}), 503
+        # Fallback to Claude when Solar8 is unavailable
+        data = request.get_json(silent=True) or {}
+        message = data.get("message", "").strip()
+        if not message:
+            return jsonify({"status": "error", "message": "message required."}), 400
+
+        try:
+            client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+            claude_response = client.messages.create(
+                model="claude-opus-4-1-20250805",
+                max_tokens=500,
+                messages=[{"role": "user", "content": message}]
+            )
+            reply = claude_response.content[0].text
+            return jsonify({
+                "status": "ok",
+                "message": message,
+                "response": reply,
+                "role": "assistant",
+                "content": reply,
+                "agent": "sol8-claude-fallback",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+        except Exception as e:
+            logger.error("[CHAT] Claude fallback failed: %s", e)
+            return jsonify({"status": "error", "message": "Chat unavailable."}), 503
     data = request.get_json(silent=True) or {}
     message = data.get("message", "").strip()
     history = data.get("history", [])

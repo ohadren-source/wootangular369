@@ -66,8 +66,13 @@ class Database:
         """Close database connection."""
         if self.conn:
             if self.is_turso:
-                # HranaClient doesn't need explicit close, but we can set it to None
-                self.conn = None
+                # HranaClient: explicitly close the connection
+                try:
+                    await self.conn.close()
+                except Exception as e:
+                    logger.warning(f"[DB] Turso close warning: {e}")
+                finally:
+                    self.conn = None
             else:
                 await self.conn.close()
             logger.info("[DB] Connection closed")
@@ -114,10 +119,8 @@ class Database:
 
         try:
             if self.is_turso:
-                # Turso: execute() is async, must await
-                await self.conn.execute(agents_schema)
-                await self.conn.execute(conversations_schema)
-                await self.conn.execute(messages_schema)
+                # Turso: use batch() for multiple statements (more efficient than separate execute() calls)
+                await self.conn.batch([agents_schema, conversations_schema, messages_schema])
             else:
                 # SQLite: use cursor
                 async with self.conn.cursor() as cursor:
