@@ -30,6 +30,7 @@ class Database:
         """Open database connection."""
         if self.is_turso:
             # Turso: use libsql_client
+            logger.info(f"[DB] Attempting Turso connection to {self.db_url[:50]}... with token: {'set' if self.auth_token else 'NOT SET'}")
             try:
                 import libsql_client
                 self.conn = libsql_client.create_client(

@@ -315,6 +315,41 @@ async def solar8_chat(request: Request):
 
 
 # ============================================================================
+# SOLAR8 UI STUB ENDPOINTS (Legacy solar8.html requires these)
+# ============================================================================
+
+@app.post("/api/auth")
+async def stub_auth(request: Request):
+    """Stub: solar8.html authentication."""
+    return {"authenticated": True, "user": "sol8-user"}
+
+@app.post("/api/elephant/upload")
+async def stub_elephant_upload(request: Request):
+    """Stub: file upload endpoint."""
+    return {"status": "uploaded", "id": "stub-upload-id"}
+
+@app.post("/api/generate-files/download-all")
+async def stub_download_all(request: Request):
+    """Stub: batch file download."""
+    return {"status": "ready", "download_url": "/static/stub.zip"}
+
+@app.post("/api/tts")
+async def stub_tts(request: Request):
+    """Stub: text-to-speech endpoint."""
+    return {"status": "generated", "audio_url": "/static/stub.mp3"}
+
+@app.post("/api/memory/force")
+async def stub_memory_force(request: Request):
+    """Stub: force memory flush."""
+    return {"status": "flushed"}
+
+@app.post("/api/reorient")
+async def stub_reorient(request: Request):
+    """Stub: reorient Solar8 context."""
+    return {"status": "reoriented"}
+
+
+# ============================================================================
 # HEALTH & DEBUG
 # ============================================================================
 
