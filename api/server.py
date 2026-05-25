@@ -77,6 +77,29 @@ def _start_yentah():
 threading.Thread(target=_start_yentah, daemon=True, name="yentah-swarm").start()
 logger.info("[YENTAH] Swarm thread launched.")
 
+# ============================================================================
+# PEER-TO-PEER INSTANCE INFRASTRUCTURE
+# ============================================================================
+
+# Register instance discovery blueprint
+from api.routes import instances as instances_bp
+app.register_blueprint(instances_bp.bp)
+logger.info("[P2P] Instance discovery blueprint registered")
+
+# Register chat (peer-to-peer messaging) blueprint
+from api.routes import chat as chat_bp
+app.register_blueprint(chat_bp.bp)
+logger.info("[P2P] Chat (SSE) blueprint registered")
+
+# Initialize background task processor for inter-instance routing
+from api.background import init_background_processing, stop_background_processing
+init_background_processing()
+logger.info("[P2P] Background task processor initialized")
+
+# Register cleanup on shutdown
+import atexit
+atexit.register(stop_background_processing)
+
 
 @app.route("/health")
 def health():

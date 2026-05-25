@@ -66,7 +66,7 @@ max_requests_jitter = 50  # Random jitter to avoid thundering herd on restart
 preload_app = False  # Don't preload (keeps startup fast, trades memory for speed)
 
 # ============================================================================
-# LIFECYCLE HOOKS — LOGGING & DEBUGGING
+# LIFECYCLE HOOKS — LOGGING, DEBUGGING, INSTANCE REGISTRATION
 # ============================================================================
 
 def on_starting(server):
@@ -77,9 +77,23 @@ def on_reload(server):
     """Called when workers are reloaded."""
     server.log.info("🔄 Server reloading — swarm reconfiguring")
 
+def post_worker_init(worker):
+    """Called after worker process is initialized."""
+    try:
+        from api.instance import InstanceRegistry, INSTANCE_ID
+        worker.log.info(f"[GUNICORN] Worker {worker.pid} initialized as {INSTANCE_ID}")
+        InstanceRegistry.register()
+    except Exception as e:
+        worker.log.error(f"[GUNICORN] Failed to register instance: {e}")
+
 def worker_exit(server, worker):
     """Called when a worker is exiting."""
-    server.log.info(f"💀 Worker {worker.pid} exiting — reincarnation imminent")
+    try:
+        from api.instance import InstanceRegistry, INSTANCE_ID
+        server.log.info(f"💀 Worker {worker.pid} ({INSTANCE_ID}) shutting down")
+        InstanceRegistry.deregister()
+    except Exception as e:
+        server.log.error(f"[GUNICORN] Failed to deregister instance: {e}")
 
 # ============================================================================
 # SSL / TLS (commented out — configure if needed)
