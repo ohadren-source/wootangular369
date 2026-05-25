@@ -33,9 +33,11 @@ class Database:
             logger.info(f"[DB] Attempting Turso connection to {self.db_url[:50]}... with token: {'set' if self.auth_token else 'NOT SET'}")
             try:
                 import libsql_client
+                # Turso expects Bearer token format
+                token = self.auth_token if self.auth_token.startswith("Bearer ") else f"Bearer {self.auth_token}" if self.auth_token else None
                 self.conn = libsql_client.create_client(
                     url=self.db_url,
-                    auth_token=self.auth_token
+                    auth_token=token
                 )
                 logger.info("[DB] Connected to Turso (HranaClient)")
             except (ImportError, ModuleNotFoundError):
