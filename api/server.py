@@ -67,16 +67,21 @@ fusion_core = FusionCore()
 #solar8 = Solar8() - replace
 from core.maf_bootstrap import boot_maf
 sol_agent, solar8, a2a_app = boot_maf()
-yentah = YentahSwarm()
 
-def _start_yentah():
-    try:
-        yentah.orchestrate()
-    except Exception as e:
-        logger.error("[YENTAH] Swarm crashed: %s", e)
+# [DEPRECATED] YentahSwarm commented out — no agents currently available to coordinate.
+# Re-enable when multi-agent ecosystems are active.
+# yentah = YentahSwarm()
+#
+# def _start_yentah():
+#     try:
+#         yentah.orchestrate()
+#     except Exception as e:
+#         logger.error("[YENTAH] Swarm crashed: %s", e)
+#
+# threading.Thread(target=_start_yentah, daemon=True, name="yentah-swarm").start()
+# logger.info("[YENTAH] Swarm thread launched.")
 
-threading.Thread(target=_start_yentah, daemon=True, name="yentah-swarm").start()
-logger.info("[YENTAH] Swarm thread launched.")
+logger.info("[BOOT] YentahSwarm coordination disabled (no active agents)")
 
 # ============================================================================
 # PEER-TO-PEER INSTANCE INFRASTRUCTURE

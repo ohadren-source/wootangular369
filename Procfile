@@ -1,1 +1,1 @@
-web: gunicorn --config gunicorn_config.py --bind 0.0.0.0:$PORT api.server:app
+web: uvicorn main:app --host 0.0.0.0 --port $PORT
