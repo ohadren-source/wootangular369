@@ -3,7 +3,6 @@ Async database layer for Turso (cloud SQLite) or local SQLite.
 Handles both HranaClient (Turso) and aiosqlite (local) APIs.
 """
 
-import asyncio
 import os
 import json
 import logging
@@ -124,17 +123,17 @@ class Database:
                 # Turso: execute each schema separately (batch() may not be available)
                 # Each CREATE TABLE IF NOT EXISTS is idempotent
                 try:
-                    await asyncio.to_thread(self.conn.execute, agents_schema)
+                    await self.conn.execute(agents_schema)
                 except Exception as e:
                     logger.debug(f"[DB] Agents table init: {e}")
 
                 try:
-                    await asyncio.to_thread(self.conn.execute, conversations_schema)
+                    await self.conn.execute(conversations_schema)
                 except Exception as e:
                     logger.debug(f"[DB] Conversations table init: {e}")
 
                 try:
-                    await asyncio.to_thread(self.conn.execute, messages_schema)
+                    await self.conn.execute(messages_schema)
                 except Exception as e:
                     logger.debug(f"[DB] Messages table init: {e}")
             else:
@@ -151,8 +150,8 @@ class Database:
         """Execute a query (handles both Turso and SQLite)."""
         try:
             if self.is_turso:
-                # execute() is synchronous, run in thread pool
-                result = await asyncio.to_thread(self.conn.execute, sql, params)
+                # execute() is async, await directly
+                result = await self.conn.execute(sql, params)
                 return result
             else:
                 # SQLite
@@ -168,9 +167,9 @@ class Database:
         """Fetch one row (handles both Turso and SQLite)."""
         try:
             if self.is_turso:
-                # execute() is synchronous
-                result = await asyncio.to_thread(self.conn.execute, sql, params)
-                # libsql_client returns a Cursor-like object with rows attribute
+                # execute() is async, await directly
+                result = await self.conn.execute(sql, params)
+                # libsql_client returns a ResultSet with rows attribute
                 rows = result.rows if hasattr(result, 'rows') else []
                 return rows[0] if rows else None
             else:
@@ -185,8 +184,8 @@ class Database:
         """Fetch all rows (handles both Turso and SQLite)."""
         try:
             if self.is_turso:
-                # execute() is synchronous
-                result = await asyncio.to_thread(self.conn.execute, sql, params)
+                # execute() is async, await directly
+                result = await self.conn.execute(sql, params)
                 return result.rows if hasattr(result, 'rows') else []
             else:
                 async with self.conn.cursor() as cursor:
