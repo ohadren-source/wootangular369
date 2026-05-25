@@ -228,6 +228,53 @@ async def receive_a2a_task(request: Request):
 # SOLAR8 DIRECT CHAT (Manual conversation with Solar8)
 # ============================================================================
 
+@app.post("/api/chat")
+async def solar8_chat_main(request: Request):
+    """
+    Main chat endpoint for solar8.html UI.
+    User sends message with history, gets response back.
+    """
+    try:
+        body = await request.json()
+        message = body.get("message", "").strip()
+        history = body.get("history", [])
+        mode = body.get("mode", "default")
+
+        if not message:
+            return {"error": "message required"}, 400
+
+        # Check if Solar8 is available
+        if not hasattr(request.app.state, "solar8"):
+            return {
+                "error": "Solar8 not initialized. Legacy systems unavailable.",
+                "role": "assistant",
+                "content": "Sol is currently unavailable."
+            }, 503
+
+        solar8 = request.app.state.solar8
+
+        # Call Solar8
+        response = solar8.chat(message, user="user")
+
+        return {
+            "status": "ok",
+            "message": message,
+            "response": response,
+            "role": "assistant",
+            "content": response,
+            "agent": "sol8-main",
+            "timestamp": __import__("datetime").datetime.utcnow().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"[CHAT] Failed: {e}")
+        return {
+            "error": str(e),
+            "role": "assistant",
+            "content": f"Error: {str(e)}"
+        }, 500
+
+
 @app.post("/api/solar8/chat")
 async def solar8_chat(request: Request):
     """
