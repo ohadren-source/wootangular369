@@ -15,6 +15,7 @@ CHAT_REQUEST_QUEUE_PREFIX = "sol8:chat:request"  # sol8:chat:request:{target_id}
 CHAT_REQUEST_RESPONSE_PREFIX = "sol8:chat:response"  # sol8:chat:response:{requester_id}
 EXCLUSIVE_CHAT_CHANNEL_PREFIX = "sol8:chat:exclusive"  # sol8:chat:exclusive:{id1}:{id2}
 CHAT_HISTORY_KEY = "sol8:chat:history"
+ACTIVE_CHANNELS_KEY = "sol8:chat:active_channels"  # Set of active channel keys
 
 
 class ChatBroker:
@@ -111,6 +112,9 @@ class ChatBroker:
             # Clear the request from queue
             queue_key = f"{CHAT_REQUEST_QUEUE_PREFIX}:{instance_id}"
             redis_client.delete(queue_key)
+
+            # Add channel to active channels set
+            redis_client.sadd(ACTIVE_CHANNELS_KEY, channel_key)
 
             return {
                 "status": "accepted",
@@ -247,6 +251,11 @@ class ChatBroker:
             InstanceRegistry.set_state(instance_id, STATE_AVAILABLE)
             InstanceRegistry.set_state(chat_partner, STATE_AVAILABLE)
 
+            # Remove channel from active channels set
+            ids = sorted([instance_id, chat_partner])
+            channel_key = f"{EXCLUSIVE_CHAT_CHANNEL_PREFIX}:{ids[0]}:{ids[1]}"
+            redis_client.srem(ACTIVE_CHANNELS_KEY, channel_key)
+
             return {
                 "status": "ended",
                 "instance_id": instance_id,
@@ -256,6 +265,20 @@ class ChatBroker:
 
         except Exception as e:
             return {"error": str(e)}
+
+    @staticmethod
+    def get_active_channels() -> list:
+        """Get all currently active chat channels."""
+        if not redis_client:
+            return []
+
+        try:
+            channels = redis_client.smembers(ACTIVE_CHANNELS_KEY)
+            return sorted(list(channels))
+
+        except Exception as e:
+            print(f"[CHAT] Failed to get active channels: {e}")
+            return []
 
     @staticmethod
     def get_chat_history(limit: int = 50) -> list:

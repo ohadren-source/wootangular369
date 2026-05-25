@@ -203,6 +203,11 @@
             </div>
 
             <div id="pendingRequests" style="margin-top: 15px;"></div>
+
+            <div id="activeConversations" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #0f0;">
+                <h2 style="color: #ff0; margin-bottom: 10px;">WATCHING</h2>
+                <ul class="agent-list" id="conversationList"></ul>
+            </div>
         </div>
 
         <div class="chat-container" id="chatContainer">
@@ -236,12 +241,15 @@
         let currentPartner = null;
         let eventSource = null;
         let requestCheckInterval = null;
+        let isSpectating = false;
+        let spectatingChannel = null;
 
         // Initialize
         async function init() {
             await fetchSelf();
             await fetchAgents();
             startRequestPolling();
+            startConversationPolling();
 
             // Refresh agent list every 5 seconds
             setInterval(fetchAgents, 5000);
@@ -365,6 +373,74 @@
             }
         }
 
+        // Poll for active conversations
+        function startConversationPolling() {
+            setInterval(fetchActiveConversations, 2000);
+        }
+
+        async function fetchActiveConversations() {
+            try {
+                const response = await fetch('/api/chat/active');
+                const data = await response.json();
+
+                const conversationList = document.getElementById('conversationList');
+                conversationList.innerHTML = '';
+
+                if (data.active_channels && data.active_channels.length > 0) {
+                    data.active_channels.forEach(channel => {
+                        const li = document.createElement('li');
+                        li.className = 'agent-item';
+                        li.style.cursor = 'pointer';
+                        li.textContent = channel.replace('sol8:chat:exclusive:', '');
+                        li.onclick = () => watchChannel(channel);
+                        conversationList.appendChild(li);
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to fetch active conversations:', error);
+            }
+        }
+
+        // Watch a channel in spectator mode
+        function watchChannel(channel) {
+            isSpectating = true;
+            spectatingChannel = channel;
+            currentChannel = channel;
+
+            // Extract participant names from channel key
+            const parts = channel.replace('sol8:chat:exclusive:', '').split(':');
+            document.getElementById('chatPartner').textContent = `${parts[0]} ↔ ${parts[1]} (WATCHING)`;
+            document.getElementById('chatContainer').classList.add('active');
+            document.getElementById('messages').innerHTML = '';
+
+            // Hide input controls in spectator mode
+            document.querySelector('.input-container').style.display = 'none';
+            document.querySelector('.end-chat-btn').textContent = 'CLOSE';
+            document.querySelector('.end-chat-btn').onclick = () => closeSpectator();
+
+            // Start listening to messages
+            connectToStream(channel);
+        }
+
+        // Close spectator mode
+        function closeSpectator() {
+            isSpectating = false;
+            spectatingChannel = null;
+            currentChannel = null;
+            currentPartner = null;
+
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+
+            // Reset UI
+            document.getElementById('chatContainer').classList.remove('active');
+            document.querySelector('.input-container').style.display = 'flex';
+            document.querySelector('.end-chat-btn').textContent = 'END CHAT';
+            document.querySelector('.end-chat-btn').onclick = () => endChat();
+        }
+
         // Accept a chat request
         async function acceptRequest(requestId, fromInstance) {
             try {
@@ -463,6 +539,11 @@
 
         // Send a message
         async function sendMessage() {
+            if (isSpectating) {
+                alert('You are in spectator mode. Cannot send messages.');
+                return;
+            }
+
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
 

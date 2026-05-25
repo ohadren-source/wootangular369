@@ -259,6 +259,18 @@ def chat_status():
     })
 
 
+@bp.route('/active', methods=['GET'])
+def get_active_channels():
+    """Get all currently active chat channels."""
+    channels = ChatBroker.get_active_channels()
+
+    return jsonify({
+        "active_channels": channels,
+        "count": len(channels),
+        "timestamp": datetime.utcnow().isoformat()
+    })
+
+
 @bp.route('/history', methods=['GET'])
 def get_history():
     """Get recent chat history (all channels)."""
