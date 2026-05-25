@@ -428,7 +428,10 @@
 
             eventSource.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                displayMessage(data);
+                // Only display actual messages, skip heartbeat/connection events
+                if (data.from_instance && data.message) {
+                    displayMessage(data);
+                }
             };
 
             eventSource.onerror = (error) => {
