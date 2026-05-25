@@ -66,7 +66,11 @@ class Database:
         """Close database connection."""
         if self.conn:
             if self.is_turso:
-                # HranaClient doesn't need explicit close, but we can set it to None
+                # HranaClient has an async close method
+                try:
+                    await self.conn.close()
+                except Exception:
+                    pass
                 self.conn = None
             else:
                 await self.conn.close()
@@ -114,10 +118,8 @@ class Database:
 
         try:
             if self.is_turso:
-                # Turso: execute() is async, must await
-                await self.conn.execute(agents_schema)
-                await self.conn.execute(conversations_schema)
-                await self.conn.execute(messages_schema)
+                # Turso: use batch() to execute multiple statements atomically
+                await self.conn.batch([agents_schema, conversations_schema, messages_schema])
             else:
                 # SQLite: use cursor
                 async with self.conn.cursor() as cursor:
@@ -149,10 +151,9 @@ class Database:
         """Fetch one row (handles both Turso and SQLite)."""
         try:
             if self.is_turso:
-                # Turso - execute is async
+                # Turso: ResultSet exposes rows as a list of tuples via .rows
                 result = await self.conn.execute(sql, params)
-                rows = result.fetchall()
-                return rows[0] if rows else None
+                return result.rows[0] if result.rows else None
             else:
                 async with self.conn.cursor() as cursor:
                     await cursor.execute(sql, params)
@@ -165,9 +166,9 @@ class Database:
         """Fetch all rows (handles both Turso and SQLite)."""
         try:
             if self.is_turso:
-                # Turso - execute is async
+                # Turso: ResultSet exposes rows as a list of tuples via .rows
                 result = await self.conn.execute(sql, params)
-                return result.fetchall()
+                return result.rows
             else:
                 async with self.conn.cursor() as cursor:
                     await cursor.execute(sql, params)
