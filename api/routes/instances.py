@@ -12,12 +12,18 @@ bp = Blueprint('instances', __name__, url_prefix='/api/instances')
 
 @bp.route('', methods=['GET'])
 def list_instances():
-    """List all live Sol 8 instances at this URL."""
-    instances = InstanceRegistry.get_all()
+    """
+    List all live Sol 8 instances at this URL.
+    Optional state filter: ?state=AVAILABLE|BUSY|OFFLINE
+    """
+    state_filter = request.args.get('state')  # None, or AVAILABLE, BUSY, OFFLINE
+
+    instances = InstanceRegistry.get_all(state_filter=state_filter)
 
     return jsonify({
         "instances": list(instances.values()),
         "count": len(instances),
+        "state_filter": state_filter,
         "current_instance": INSTANCE_ID,
         "timestamp": datetime.utcnow().isoformat()
     })
