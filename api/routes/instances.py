@@ -3,7 +3,7 @@ Instance discovery and health endpoints.
 Enables peer-to-peer Sol 8 instance discovery at the same URL.
 """
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 from datetime import datetime
 from api.instance import InstanceRegistry, INSTANCE_ID
 
