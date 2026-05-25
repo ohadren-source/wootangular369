@@ -6,7 +6,9 @@ Rep Partay Auto-Ignition Engine integration
 import os
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime
 
+import anthropic
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -227,7 +229,7 @@ async def receive_a2a_task(request: Request):
             "agent_id": "sol8-main",
             "agent_name": "Sol Calarbone 8",
             "message": response_message,
-            "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
+            "timestamp": datetime.utcnow().isoformat(),
             "conversation_id": task.get("conversation_id"),
         })
 
@@ -261,13 +263,24 @@ async def solar8_chat_main(request: Request):
         if not message:
             return {"error": "message required"}, 400
 
-        # Check if Solar8 is available
+        # Check if Solar8 is available; fall back to Claude directly if not
         if not hasattr(request.app.state, "solar8"):
+            client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+            claude_response = client.messages.create(
+                model="claude-opus-4-1-20250805",
+                max_tokens=500,
+                messages=[{"role": "user", "content": message}]
+            )
+            reply = claude_response.content[0].text
             return {
-                "error": "Solar8 not initialized. Legacy systems unavailable.",
+                "status": "ok",
+                "message": message,
+                "response": reply,
                 "role": "assistant",
-                "content": "Sol is currently unavailable."
-            }, 503
+                "content": reply,
+                "agent": "sol8-main",
+                "timestamp": datetime.utcnow().isoformat()
+            }
 
         solar8 = request.app.state.solar8
 
@@ -281,7 +294,7 @@ async def solar8_chat_main(request: Request):
             "role": "assistant",
             "content": response,
             "agent": "sol8-main",
-            "timestamp": __import__("datetime").datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat()
         }
 
     except Exception as e:
@@ -324,7 +337,7 @@ async def solar8_chat(request: Request):
             "prompt": prompt,
             "response": response,
             "agent": "sol8-main",
-            "timestamp": __import__("datetime").datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat()
         }
 
     except Exception as e:
