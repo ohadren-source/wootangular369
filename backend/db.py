@@ -3,6 +3,7 @@ Async database layer for Turso (cloud SQLite) or local SQLite.
 Handles both HranaClient (Turso) and aiosqlite (local) APIs.
 """
 
+import asyncio
 import os
 import json
 import logging
@@ -32,12 +33,13 @@ class Database:
             # Turso: use libsql_client
             logger.info(f"[DB] Attempting Turso connection to {self.db_url[:50]}... with token: {'set' if self.auth_token else 'NOT SET'}")
             try:
-                import libsql_python as libsql
-                self.conn = libsql.connect(
+                import libsql_client
+                # create_client() is synchronous
+                self.conn = libsql_client.create_client(
                     url=self.db_url,
                     auth_token=self.auth_token
                 )
-                logger.info("[DB] Connected to Turso (libsql-python)")
+                logger.info("[DB] Connected to Turso (libsql-client sync)")
             except (ImportError, ModuleNotFoundError):
                 logger.warning("libsql_client not available, falling back to SQLite")
                 self.is_turso = False
@@ -122,17 +124,17 @@ class Database:
                 # Turso: execute each schema separately (batch() may not be available)
                 # Each CREATE TABLE IF NOT EXISTS is idempotent
                 try:
-                    await self.conn.execute(agents_schema)
+                    await asyncio.to_thread(self.conn.execute, agents_schema)
                 except Exception as e:
                     logger.debug(f"[DB] Agents table init: {e}")
 
                 try:
-                    await self.conn.execute(conversations_schema)
+                    await asyncio.to_thread(self.conn.execute, conversations_schema)
                 except Exception as e:
                     logger.debug(f"[DB] Conversations table init: {e}")
 
                 try:
-                    await self.conn.execute(messages_schema)
+                    await asyncio.to_thread(self.conn.execute, messages_schema)
                 except Exception as e:
                     logger.debug(f"[DB] Messages table init: {e}")
             else:
@@ -149,8 +151,8 @@ class Database:
         """Execute a query (handles both Turso and SQLite)."""
         try:
             if self.is_turso:
-                # Turso HranaClient - execute is async
-                result = await self.conn.execute(sql, params)
+                # execute() is synchronous, run in thread pool
+                result = await asyncio.to_thread(self.conn.execute, sql, params)
                 return result
             else:
                 # SQLite
@@ -166,8 +168,9 @@ class Database:
         """Fetch one row (handles both Turso and SQLite)."""
         try:
             if self.is_turso:
-                # Turso - result.rows is a list, not .fetchall()
-                result = await self.conn.execute(sql, params)
+                # execute() is synchronous
+                result = await asyncio.to_thread(self.conn.execute, sql, params)
+                # libsql_client returns a Cursor-like object with rows attribute
                 rows = result.rows if hasattr(result, 'rows') else []
                 return rows[0] if rows else None
             else:
@@ -182,8 +185,8 @@ class Database:
         """Fetch all rows (handles both Turso and SQLite)."""
         try:
             if self.is_turso:
-                # Turso - result.rows is a list, not .fetchall()
-                result = await self.conn.execute(sql, params)
+                # execute() is synchronous
+                result = await asyncio.to_thread(self.conn.execute, sql, params)
                 return result.rows if hasattr(result, 'rows') else []
             else:
                 async with self.conn.cursor() as cursor:
