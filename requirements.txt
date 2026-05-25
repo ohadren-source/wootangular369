@@ -22,10 +22,10 @@ psycopg2-binary==2.9.7
 requests==2.31.0
 gunicorn==21.2.0
 
-# Agent framework
-agent-framework==0.1.0
-agent-framework-a2a==0.1.0
-a2a==0.1.0
+# Agent framework (optional - comment out if not available)
+# agent-framework>=1.0.0
+# agent-framework-a2a>=1.0.0
+# a2a>=1.0.0
 
 # Utilities
 PyGithub==2.1.1
