@@ -113,10 +113,10 @@ class Database:
 
         try:
             if self.is_turso:
-                # Turso: use execute() directly
-                self.conn.execute(agents_schema)
-                self.conn.execute(conversations_schema)
-                self.conn.execute(messages_schema)
+                # Turso: execute() is async, must await
+                await self.conn.execute(agents_schema)
+                await self.conn.execute(conversations_schema)
+                await self.conn.execute(messages_schema)
             else:
                 # SQLite: use cursor
                 async with self.conn.cursor() as cursor:
@@ -131,8 +131,8 @@ class Database:
         """Execute a query (handles both Turso and SQLite)."""
         try:
             if self.is_turso:
-                # Turso HranaClient
-                result = self.conn.execute(sql, params)
+                # Turso HranaClient - execute is async
+                result = await self.conn.execute(sql, params)
                 return result
             else:
                 # SQLite
@@ -148,7 +148,8 @@ class Database:
         """Fetch one row (handles both Turso and SQLite)."""
         try:
             if self.is_turso:
-                result = self.conn.execute(sql, params)
+                # Turso - execute is async
+                result = await self.conn.execute(sql, params)
                 rows = result.fetchall()
                 return rows[0] if rows else None
             else:
@@ -163,7 +164,8 @@ class Database:
         """Fetch all rows (handles both Turso and SQLite)."""
         try:
             if self.is_turso:
-                result = self.conn.execute(sql, params)
+                # Turso - execute is async
+                result = await self.conn.execute(sql, params)
                 return result.fetchall()
             else:
                 async with self.conn.cursor() as cursor:
