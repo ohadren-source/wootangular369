@@ -189,8 +189,8 @@ def stream_chat():
                     yield f"data: {json.dumps({'type': 'error', 'message': envelope['error']})}\n\n"
                     break
 
-                # Send message
-                yield f"data: {json.dumps({'type': 'message', 'payload': envelope})}\n\n"
+                # Send message envelope directly (UI expects from_instance, message, timestamp)
+                yield f"data: {json.dumps(envelope)}\n\n"
 
             except queue.Empty:
                 # Send heartbeat to keep connection alive
