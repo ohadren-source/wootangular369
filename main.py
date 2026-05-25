@@ -185,6 +185,24 @@ async def root():
         """
 
 
+@app.get("/solar8", response_class=HTMLResponse)
+async def solar8_ui():
+    """Serve Solar8 direct chat UI."""
+    try:
+        with open("static/solar8.html", "r") as f:
+            return f.read()
+    except FileNotFoundError:
+        return """
+        <html>
+            <head><title>Sol Calarbone 8</title></head>
+            <body>
+                <h1>☀️ Sol Calarbone 8</h1>
+                <p>Solar8 UI not found. Please check static/solar8.html</p>
+            </body>
+        </html>
+        """
+
+
 # ============================================================================
 # A2A TASK RECEIVER
 # ============================================================================

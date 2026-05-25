@@ -33,11 +33,9 @@ class Database:
             logger.info(f"[DB] Attempting Turso connection to {self.db_url[:50]}... with token: {'set' if self.auth_token else 'NOT SET'}")
             try:
                 import libsql_client
-                # Turso expects Bearer token format
-                token = self.auth_token if self.auth_token.startswith("Bearer ") else f"Bearer {self.auth_token}" if self.auth_token else None
                 self.conn = libsql_client.create_client(
                     url=self.db_url,
-                    auth_token=token
+                    auth_token=self.auth_token
                 )
                 logger.info("[DB] Connected to Turso (HranaClient)")
             except (ImportError, ModuleNotFoundError):
@@ -151,9 +149,9 @@ class Database:
         """Fetch one row (handles both Turso and SQLite)."""
         try:
             if self.is_turso:
-                # Turso - execute is async
+                # Turso - result.rows is a list, not .fetchall()
                 result = await self.conn.execute(sql, params)
-                rows = result.fetchall()
+                rows = result.rows if hasattr(result, 'rows') else []
                 return rows[0] if rows else None
             else:
                 async with self.conn.cursor() as cursor:
@@ -167,9 +165,9 @@ class Database:
         """Fetch all rows (handles both Turso and SQLite)."""
         try:
             if self.is_turso:
-                # Turso - execute is async
+                # Turso - result.rows is a list, not .fetchall()
                 result = await self.conn.execute(sql, params)
-                return result.fetchall()
+                return result.rows if hasattr(result, 'rows') else []
             else:
                 async with self.conn.cursor() as cursor:
                     await cursor.execute(sql, params)
