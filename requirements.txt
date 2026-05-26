@@ -15,8 +15,8 @@ httpx==0.25.0
 # Streaming - SSE for watcher
 sse-starlette==1.8.2
 
-# AI - Claude
-anthropic==0.25.0
+# AI - Claude (bumped from 0.25.0 — older SDK rejects tools= on messages.create and predates claude-sonnet-4-5)
+anthropic==0.104.1
 
 # Database - PostgreSQL (psycopg2 to match `import psycopg2` in the code; -binary bundles libpq, no system lib needed)
 psycopg2-binary>=2.9.9
