@@ -361,8 +361,17 @@ async def solar8_chat(request: Request):
 
 @app.post("/api/auth")
 async def stub_auth(request: Request):
-    """Stub: solar8.html authentication."""
-    return {"authenticated": True, "user": "sol8-user"}
+    """Authenticate user and return name for greeting."""
+    data = await request.json()
+    credentials = data.get("credentials", "").strip()
+
+    root_pass = os.getenv("ROOT_CREDENTIAL", "").strip()
+    expected = f"Ohad:{root_pass}"
+
+    if credentials == expected:
+        return {"mode": "ROOT", "name": "Ohad"}
+    else:
+        return {"mode": "GUEST", "name": "mate"}
 
 @app.post("/api/elephant/upload")
 async def stub_elephant_upload(request: Request):
