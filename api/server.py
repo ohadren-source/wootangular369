@@ -1034,9 +1034,15 @@ def auth():
 
     root_pass = os.getenv("ROOT_CREDENTIAL", "")
 
+    logger.info(f"[AUTH] Credentials received: '{credentials}'")
+    logger.info(f"[AUTH] ROOT_CREDENTIAL: '{root_pass}'")
+    logger.info(f"[AUTH] Expected: 'Ohad:{root_pass}'")
+
     if credentials == f"Ohad:{root_pass}":
+        logger.info("[AUTH] ✓ Authentication successful")
         return jsonify({"mode": "ROOT", "name": "Ohad"})
     else:
+        logger.info(f"[AUTH] ✗ Authentication failed - credential mismatch")
         return jsonify({"mode": "GUEST", "name": "mate"})
 
 
