@@ -261,18 +261,9 @@ async def solar8_chat_main(request: Request):
         if not message:
             return {"error": "message required"}, 400
 
-        # Check if Solar8 is available
-        if not hasattr(request.app.state, "solar8"):
-            return {
-                "error": "Solar8 not initialized. Legacy systems unavailable.",
-                "role": "assistant",
-                "content": "Sol is currently unavailable."
-            }, 503
-
-        solar8 = request.app.state.solar8
-
-        # Call Solar8
-        response = solar8.chat(message, user="user")
+        # Use TaskProcessor (Claude) instead of legacy Solar8
+        processor = request.app.state.processor
+        response = await processor.process({"message": message})
 
         return {
             "status": "ok",
