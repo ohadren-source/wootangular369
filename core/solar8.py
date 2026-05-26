@@ -1282,32 +1282,62 @@ class Solar8:
                 content = inputs.get("content", "")
                 filename = inputs.get("filename", "document").strip()
                 fmt = inputs.get("format", "md").strip().lower()
+                group_id = inputs.get("group_id", "")
+
                 if not content or not filename:
                     return "generate_file error: content and filename are required"
-                if fmt not in ("md", "txt", "html"):
-                    return "generate_file error: format must be md, txt, or html"
-                try:
-                    from api.server import _safe_download_name
-                    file_id = str(uuid.uuid4())
-                    download_name = _safe_download_name(filename, fmt)
 
-                    # Determine MIME type
-                    mime_type_map = {"md": "text/markdown", "txt": "text/plain", "html": "text/html"}
-                    mime_type = mime_type_map.get(fmt, "text/plain")
+                try:
+                    from core.file_utils import validate_and_prepare_filename, get_mime_type
+
+                    # Validate and prepare filename
+                    is_valid, prepared_filename, error_msg = validate_and_prepare_filename(filename, fmt)
+                    if not is_valid:
+                        return f"generate_file error: {error_msg}"
+
+                    # Generate IDs
+                    file_id = str(uuid.uuid4())
+                    if not group_id:
+                        group_id = str(uuid.uuid4())
+
+                    # Get MIME type
+                    mime_type = get_mime_type(fmt)
+
+                    # Convert content to bytes
+                    if isinstance(content, str):
+                        content_bytes = content.encode('utf-8')
+                    else:
+                        content_bytes = content
 
                     # Store in database
-                    banks.store_generated_file(
+                    success = banks.store_generated_file_v2(
                         file_id=file_id,
-                        filename=download_name,
+                        group_id=group_id,
+                        filename=prepared_filename,
+                        content=content_bytes,
                         mime_type=mime_type,
-                        content=content,
-                        generation_method=f"solar8_generate_{fmt}"
+                        format=fmt
                     )
 
+                    if not success:
+                        return "generate_file error: Failed to store file in database"
+
+                    # Build return object
                     base_url = os.getenv("SOLAR8_URL", "").rstrip("/")
-                    download_url = f"{base_url}/api/generate-file/{file_id}" if base_url else f"/api/generate-file/{file_id}"
-                    return f"[{download_name}]({download_url})"
+                    download_url = f"{base_url}/api/download/file/{file_id}" if base_url else f"/api/download/file/{file_id}"
+
+                    result = {
+                        "file_id": file_id,
+                        "group_id": group_id,
+                        "filename": prepared_filename,
+                        "download_url": download_url,
+                        "success": True
+                    }
+
+                    return _json.dumps(result)
+
                 except Exception as e:
+                    logger.error(f"generate_file error: {e}")
                     return f"generate_file failed: {e}"
             elif name == "process_file_chunks":
                 file_id = inputs.get("file_id", "").strip()
@@ -1361,8 +1391,50 @@ class Solar8:
                     return f"read_elephant_file error: {resp.status_code} {resp.text}"
                 except Exception as e:
                     return f"read_elephant_file error: {e}"
+            # fetch_webpage: primary web content extraction via WebFetcher
+            elif name == "fetch_webpage":
+                url = inputs.get("url", "").strip()
+                if not url:
+                    return "fetch_webpage error: url is required"
+                try:
+                    from core.web_fetch import WebFetcher
+                    import asyncio
+
+                    fetcher = WebFetcher(timeout=30)
+
+                    # Run async fetcher in executor
+                    loop = asyncio.new_event_loop()
+                    try:
+                        result = loop.run_until_complete(fetcher.fetch(url))
+                    finally:
+                        loop.close()
+
+                    if not result.get("success"):
+                        error_msg = result.get("error", "Unknown error")
+                        return f"Failed to fetch {url}: {error_msg}"
+
+                    # Format result for Sol
+                    content = result.get("content", "").strip()
+                    mime_type = result.get("mime_type", "unknown")
+                    method = result.get("method", "unknown")
+
+                    output = f"[{method}] {mime_type}\n\n{content}"
+
+                    # Add to sources for citation
+                    self._current_sources.append({
+                        "title": url,
+                        "url": url,
+                        "snippet": content[:200] + "..." if len(content) > 200 else content
+                    })
+
+                    return output
+
+                except Exception as e:
+                    logger.error("fetch_webpage error: %s", e)
+                    return f"fetch_webpage failed: {e}"
+
             # Web surfing tools — delegate to skills functions
-            elif name in {"fetch_webpage", "fetch_httpx", "fetch_pyppeteer", "fetch_selenium", "fetch_splash", "fetch_scrapy", "extract_trafilatura"}:
+            elif name in {"fetch_httpx", "fetch_pyppeteer", "fetch_selenium", "fetch_splash", "fetch_scrapy", "extract_trafilatura"}:
                 if not self.tools:
                     return f"{name}: No tools available. Tools not initialized at boot."
                 tool_fn = None

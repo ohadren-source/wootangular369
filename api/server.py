@@ -1257,6 +1257,71 @@ def chunk_task_status(task_id):
         return jsonify({"error": str(e)}), 500
 
 
+# ============================================================================
+# FILE GENERATION ENDPOINTS — Download individual files or groups as ZIP
+# ============================================================================
+
+@app.route("/api/download/file/<file_id>", methods=["GET"])
+def download_generated_file(file_id):
+    """Download a single generated file by file_id."""
+    try:
+        file_data = banks.get_generated_file_by_id(file_id)
+        if not file_data:
+            return jsonify({"error": "File not found"}), 404
+
+        filename = file_data["filename"]
+        content = file_data["content"]
+        mime_type = file_data["mime_type"]
+
+        # Increment download count
+        banks.increment_file_download_count(file_id)
+
+        # Serve file with exact filename
+        return send_file(
+            BytesIO(content),
+            mimetype=mime_type,
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except Exception as e:
+        logger.error(f"download_generated_file error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/download/group/<group_id>", methods=["GET"])
+def download_group_as_zip(group_id):
+    """Download all files in a group as ZIP archive."""
+    try:
+        files = banks.get_generated_files_by_group(group_id)
+        if not files:
+            return jsonify({"error": "No files found for group"}), 404
+
+        # Create ZIP in memory
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for file_data in files:
+                filename = file_data["filename"]
+                content = file_data["content"]
+                zip_file.writestr(filename, content)
+
+        zip_buffer.seek(0)
+
+        # Generate ZIP filename
+        zip_filename = f"sol_files_{group_id[:8]}.zip"
+
+        return send_file(
+            zip_buffer,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=zip_filename
+        )
+
+    except Exception as e:
+        logger.error(f"download_group_as_zip error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 def _get_mime_type(filename: str) -> str:
     """
     Get MIME type from filename extension.

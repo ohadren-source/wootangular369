@@ -937,6 +937,97 @@ def mark_file_downloaded(file_id):
         return False
 
 
+def ensure_generated_files_table():
+    """File generation tracking for Sol downloads."""
+    sql = """
+    CREATE TABLE IF NOT EXISTS solar8_generated_files (
+        id              SERIAL PRIMARY KEY,
+        file_id         TEXT NOT NULL UNIQUE,
+        group_id        TEXT NOT NULL,
+        filename        TEXT NOT NULL,
+        content         BYTEA NOT NULL,
+        mime_type       TEXT NOT NULL,
+        format          TEXT NOT NULL,
+        created_at      TIMESTAMPTZ DEFAULT now(),
+        expires_at      TIMESTAMPTZ DEFAULT (now() + INTERVAL '7 days'),
+        download_count  INT DEFAULT 0
+    );
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_file_id ON solar8_generated_files (file_id);")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_group_id ON solar8_generated_files (group_id);")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_expires_at ON solar8_generated_files (expires_at);")
+            conn.commit()
+        logger.info("solar8_generated_files table ensured.")
+    except Exception as e:
+        logger.warning("Could not ensure solar8_generated_files: %s", e)
+
+
+def store_generated_file_v2(file_id: str, group_id: str, filename: str, content: bytes,
+                            mime_type: str, format: str) -> bool:
+    """Store a generated file for download."""
+    sql = """
+    INSERT INTO solar8_generated_files
+    (file_id, group_id, filename, content, mime_type, format, expires_at)
+    VALUES (%s, %s, %s, %s, %s, %s, NOW() + INTERVAL '7 days');
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (file_id, group_id, filename, content, mime_type, format))
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error("store_generated_file_v2 failed: %s", e)
+        return False
+
+
+def get_generated_file_by_id(file_id: str) -> Optional[dict]:
+    """Retrieve a generated file by file_id."""
+    sql = "SELECT filename, content, mime_type FROM solar8_generated_files WHERE file_id = %s;"
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql, (file_id,))
+                return cur.fetchone()
+    except Exception as e:
+        logger.error("get_generated_file_by_id failed: %s", e)
+        return None
+
+
+def get_generated_files_by_group(group_id: str) -> list:
+    """Retrieve all files in a group."""
+    sql = """
+    SELECT filename, content
+    FROM solar8_generated_files
+    WHERE group_id = %s
+    ORDER BY created_at ASC;
+    """
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql, (group_id,))
+                return cur.fetchall()
+    except Exception as e:
+        logger.error("get_generated_files_by_group failed: %s", e)
+        return []
+
+
+def increment_file_download_count(file_id: str) -> None:
+    """Increment download count for a file."""
+    sql = "UPDATE solar8_generated_files SET download_count = download_count + 1 WHERE file_id = %s;"
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (file_id,))
+            conn.commit()
+    except Exception as e:
+        logger.error("increment_file_download_count failed: %s", e)
+
+
 def ensure_all_tables():
     """Called once on startup. Idempotent. Safe to call every boot."""
     ensure_agents_table()
@@ -953,6 +1044,7 @@ def ensure_all_tables():
     ensure_solar8_files_table()
     ensure_solar8_file_chunks_table()
     ensure_solar8_generated_files_table()
+    ensure_generated_files_table()
     seed_imperial_decrees()
 
     logger.info("All wootangular tables ensured. Swarm is ready.")
