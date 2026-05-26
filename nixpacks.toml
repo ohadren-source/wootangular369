@@ -1,8 +1,8 @@
 [providers]
 python = "3.13"
 
-[system]
-pkgs = ["postgresql"]
+[phases.setup]
+cmds = ["apt-get update && apt-get install -y postgresql-client"]
 
 [phases.build]
 cmds = ["pip install -r requirements.txt"]
