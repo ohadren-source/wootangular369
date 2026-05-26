@@ -26,19 +26,21 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Sol Solo Boot (PostgreSQL + core only, no MAF)
+# NOTE: PostgreSQL imports are deferred to avoid hard failure if libpq.so.5 is missing
+# This allows the server to start even if PostgreSQL is temporarily unavailable
+LEGACY_SYSTEMS_AVAILABLE = True
+banks = None
+seed_init_cache = None
+load_corpus_into_cache = None
+Solar8 = None
+TCPUp = None
+
 try:
-    import db.wootangular_banks as banks
-    from db.seed_init_cache import seed_init_cache
-    from core.init_loader import load_corpus_into_cache
     from core.solar8 import Solar8
     from core.tcp_up import TCPUp
-    LEGACY_SYSTEMS_AVAILABLE = True
 except (ImportError, ModuleNotFoundError) as e:
-    logger.warning(f"[BOOT] Sol solo systems unavailable: {e}")
+    logger.warning(f"[BOOT] Core systems unavailable: {e}")
     LEGACY_SYSTEMS_AVAILABLE = False
-    banks = None
-    seed_init_cache = None
-    load_corpus_into_cache = None
     Solar8 = None
     TCPUp = None
 
@@ -82,6 +84,11 @@ async def lifespan(app: FastAPI):
     # Boot Sol Calarbone 8 (Solo mode — PostgreSQL + core only)
     if LEGACY_SYSTEMS_AVAILABLE:
         try:
+            # Lazy-import PostgreSQL modules (may fail if libpq.so.5 missing)
+            import db.wootangular_banks as banks
+            from db.seed_init_cache import seed_init_cache
+            from core.init_loader import load_corpus_into_cache
+
             # Initialize PostgreSQL schema + corpus
             banks.ensure_all_tables()
             logger.info("[BOOT] PostgreSQL schema ready")
