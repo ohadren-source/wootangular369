@@ -816,15 +816,11 @@ class Solar8:
 
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
-            logger.warning("ANTHROPIC_API_KEY not set. Sol Calarbone 8 offline.")
-            self._client = None
-            self._system_prompt = None
-            self.memory_manager = None
-            return
+            logger.error("[SOLAR8] ANTHROPIC_API_KEY not set in environment")
+            raise ValueError("ANTHROPIC_API_KEY environment variable is required")
 
-        self._client = anthropic.Anthropic(
-            api_key=api_key,
-        )
+        self._client = anthropic.Anthropic(api_key=api_key)
+        logger.info("[SOLAR8] Anthropic client initialized with API key")
         memory_log.init_memory_db()
         session_id = str(uuid.uuid4())
         self.memory_manager = MemoryManager(
