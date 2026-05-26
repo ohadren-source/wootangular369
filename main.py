@@ -251,6 +251,7 @@ async def solar8_chat_main(request: Request):
     """
     Main chat endpoint for solar8.html UI.
     User sends message with history, gets response back.
+    Supports optional authentication (body fields or Basic auth header).
     """
     try:
         body = await request.json()
@@ -258,12 +259,41 @@ async def solar8_chat_main(request: Request):
         history = body.get("history", [])
         mode = body.get("mode", "default")
 
+        # Extract auth credentials from body
+        username = body.get("username", "").strip()
+        password = body.get("password", "").strip()
+
+        # Fall back to Authorization header if not in body
+        if not username or not password:
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header.startswith("Basic "):
+                import base64
+                try:
+                    decoded = base64.b64decode(auth_header[6:]).decode()
+                    username, password = decoded.split(":", 1)
+                except Exception:
+                    pass
+
         if not message:
             return {"error": "message required"}, 400
 
-        # Use TaskProcessor (Claude) instead of legacy Solar8
+        # Validate admin credentials
+        is_admin = False
+        admin_username = os.getenv("ADMIN_USERNAME", "Ohad")
+        admin_password = os.getenv("ADMIN_PASSWORD", "route666")
+
+        if username == admin_username and password == admin_password:
+            is_admin = True
+            logger.info(f"[CHAT] Admin authenticated: {username}")
+
+        # Use TaskProcessor (Claude) with user context
         processor = request.app.state.processor
-        response = await processor.process({"message": message})
+        task = {
+            "message": message,
+            "user": username if username else "guest",
+            "is_admin": is_admin
+        }
+        response = await processor.process(task)
 
         return {
             "status": "ok",
@@ -272,6 +302,8 @@ async def solar8_chat_main(request: Request):
             "role": "assistant",
             "content": response,
             "agent": "sol8-main",
+            "user": username if username else "guest",
+            "is_admin": is_admin,
             "timestamp": __import__("datetime").datetime.utcnow().isoformat()
         }
 
