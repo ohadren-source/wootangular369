@@ -25,7 +25,7 @@ class TaskProcessor:
         Process an incoming A2A task and generate a response.
 
         Args:
-            task: The task payload containing type, message, etc.
+            task: The task payload containing type, message, user, is_admin, etc.
 
         Returns:
             Response message string
@@ -33,8 +33,19 @@ class TaskProcessor:
 
         task_type = task.get("type", "unknown")
         message = task.get("message", "")
+        user = task.get("user", "guest")
+        is_admin = task.get("is_admin", False)
         conversation_id = task.get("conversation_id")
         history = task.get("history", [])
+
+        # Personalized greeting for the admin user
+        if is_admin and user.lower() == "ohad":
+            if message.lower() in ["yo", "hello", "hi", "hey"]:
+                return "Hello Ohad. The Emperor arrives. What's the play?"
+
+        # Generic greeting for non-admin users
+        if message.lower() in ["yo", "hello", "hi", "hey"]:
+            return f"Hello {user}. What can I do for you?"
 
         # Build prompt based on task type
         if task_type == "repartee":
