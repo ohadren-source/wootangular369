@@ -11,6 +11,7 @@ import uuid
 import logging
 import hashlib
 import psycopg2
+from typing import Optional
 from psycopg2.extras import RealDictCursor
 from psycopg2 import pool
 
