@@ -43,9 +43,36 @@ SOLAR8_URL = os.getenv("SOLAR8_URL", "https://web-production-8b53fe.up.railway.a
 
 
 def _resolve_user_role(data: dict | None) -> str:
-    """Map incoming user mode to a safe role value for Solar8."""
-    mode = str((data or {}).get("user_mode", "GUEST")).strip().upper()
+    """Map incoming user mode to a safe role value for Solar8.
+
+    Accepts either:
+      - user_mode: "ROOT" (legacy)
+      - username + password fields (solar8.html UI)
+    """
+    d = data or {}
+    # Check username/password credentials first
+    username = d.get("username", "").strip()
+    password = d.get("password", "").strip()
+    if username and password:
+        root_pass = os.getenv("ROOT_CREDENTIAL", "")
+        if username == "Ohad" and password == root_pass:
+            return "ROOT"
+        return "GUEST"
+    # Fall back to legacy user_mode field
+    mode = str(d.get("user_mode", "GUEST")).strip().upper()
     return "ROOT" if mode == "ROOT" else "GUEST"
+
+
+def _resolve_auth_info(data: dict | None) -> dict:
+    """Return auth metadata for chat responses: is_admin and user name."""
+    d = data or {}
+    username = d.get("username", "").strip()
+    password = d.get("password", "").strip()
+    if username and password:
+        root_pass = os.getenv("ROOT_CREDENTIAL", "")
+        if username == "Ohad" and password == root_pass:
+            return {"is_admin": True, "user": username}
+    return {"is_admin": False, "user": "mate"}
 
 def boot():
     logger.info("=" * 60)
@@ -373,6 +400,7 @@ def chat():
     history = data.get("history", [])
     mode = data.get("mode", "auto")
     user_role = _resolve_user_role(data)
+    auth_info = _resolve_auth_info(data)
     file = data.get("file") or None
     files = data.get("files", [])
 
@@ -417,7 +445,8 @@ def chat():
             args=({"message": message, "response": reply_text},),
             daemon=True,
         ).start()
-        return jsonify({"status": "ok", "response": reply_text, "agent": "Sol Calarbone 8", "mode": mode})
+        return jsonify({"status": "ok", "response": reply_text, "agent": "Sol Calarbone 8", "mode": mode,
+                        "is_admin": auth_info["is_admin"], "user": auth_info["user"]})
     except ValueError as e:
         # Claude API token limit or message size errors
         logger.error("[SOLAR8] ValueError (likely size limit): %s", e)
