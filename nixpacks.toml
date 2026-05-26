@@ -1,8 +1,6 @@
 [providers]
 python = "3.13"
-
-[providers.system]
-packages = ["postgresql-client"]
+apt = "postgresql-client"
 
 [phases.build]
 cmds = ["pip install -r requirements.txt"]
