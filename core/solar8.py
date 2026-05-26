@@ -17,10 +17,26 @@ from urllib.parse import urlparse
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 
-import db.wootangular_banks as banks
-import db.memory_log as memory_log
-from core.memory_manager import MemoryManager
-from core.prime_director import PrimeDirector
+# Optional imports for legacy systems
+try:
+    import db.wootangular_banks as banks
+except (ImportError, ModuleNotFoundError):
+    banks = None
+
+try:
+    import db.memory_log as memory_log
+except (ImportError, ModuleNotFoundError):
+    memory_log = None
+
+try:
+    from core.memory_manager import MemoryManager
+except (ImportError, ModuleNotFoundError):
+    MemoryManager = None
+
+try:
+    from core.prime_director import PrimeDirector
+except (ImportError, ModuleNotFoundError):
+    PrimeDirector = None
 
 logger = logging.getLogger(__name__)
 
@@ -807,7 +823,7 @@ class Solar8:
         return "\n\n---\n\n".join(sections)
 
     def __init__(self):
-        self.prime_director = PrimeDirector()
+        self.prime_director = PrimeDirector() if PrimeDirector else None
         self._current_sources = []
         self.tools = []  # Web surfing + file processing skills (attached in boot_maf)
 
@@ -821,13 +837,21 @@ class Solar8:
 
         self._client = anthropic.Anthropic(api_key=api_key)
         logger.info("[SOLAR8] Anthropic client initialized with API key")
-        memory_log.init_memory_db()
+
+        # Initialize memory manager if available
+        if memory_log:
+            memory_log.init_memory_db()
+
         session_id = str(uuid.uuid4())
-        self.memory_manager = MemoryManager(
-            session_id=session_id,
-            auto_append_every=12,
-            compress_fn=self._compress_exchange,
-        )
+        if MemoryManager:
+            self.memory_manager = MemoryManager(
+                session_id=session_id,
+                auto_append_every=12,
+                compress_fn=self._compress_exchange,
+            )
+        else:
+            self.memory_manager = None
+            logger.warning("[SOLAR8] MemoryManager not available")
         self._system_prompt = self._build_system_prompt(role="ROOT")
         logger.info("Sol Calarbone 8 online. The hive has a voice.")
         if self.tools:
