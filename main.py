@@ -23,15 +23,21 @@ from backend.routes.agent_chat import router as agent_chat_router
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Legacy imports (Solar8 + core systems)
+# Sol Solo Boot (PostgreSQL + core only, no MAF)
 try:
-    from core.maf_bootstrap import boot_maf
+    import db.wootangular_banks as banks
+    from db.seed_init_cache import seed_init_cache
+    from core.init_loader import load_corpus_into_cache
+    from core.solar8 import Solar8
     from core.tcp_up import TCPUp
     LEGACY_SYSTEMS_AVAILABLE = True
 except (ImportError, ModuleNotFoundError) as e:
-    logger.warning(f"[BOOT] Legacy systems unavailable: {e}")
+    logger.warning(f"[BOOT] Sol solo systems unavailable: {e}")
     LEGACY_SYSTEMS_AVAILABLE = False
-    boot_maf = None
+    banks = None
+    seed_init_cache = None
+    load_corpus_into_cache = None
+    Solar8 = None
     TCPUp = None
 
 
@@ -71,30 +77,37 @@ async def lifespan(app: FastAPI):
     engine = get_engine(db=db, a2a_client=a2a_client)
     app.state.rep_partay = engine
 
-    # Boot Sol Calarbone 8 + MAF stack
+    # Boot Sol Calarbone 8 (Solo mode — PostgreSQL + core only)
     if LEGACY_SYSTEMS_AVAILABLE:
         try:
-            maf_agent, solar8, a2a_app = boot_maf()
-            app.state.maf_agent = maf_agent
-            app.state.solar8 = solar8
-            app.state.a2a_app = a2a_app
-            logger.info("[BOOT] Sol Calarbone 8 + MAF online")
+            # Initialize PostgreSQL schema + corpus
+            banks.ensure_all_tables()
+            logger.info("[BOOT] PostgreSQL schema ready")
 
-            # Initialize TCP/UP (requires banks from maf_bootstrap context)
+            count = seed_init_cache(force=False)
+            logger.info(f"[BOOT] Init cache: {count} entries")
+
+            result = load_corpus_into_cache(banks, force=False)
+            logger.info(f"[BOOT] Corpus loaded: {result}")
+
+            # Initialize Sol's brain
+            solar8 = Solar8()
+            app.state.solar8 = solar8
+            logger.info("[BOOT] Sol Calarbone 8 online (solo mode)")
+
+            # Initialize TCP/UP (optional, for future A2A)
             try:
-                import db.wootangular_banks as banks
                 tcp_up = TCPUp(db_banks=banks)
                 app.state.tcp_up = tcp_up
                 logger.info("[BOOT] TCP/UP initialized")
             except Exception as e:
-                logger.warning(f"[BOOT] TCP/UP initialization skipped: {e}")
+                logger.warning(f"[BOOT] TCP/UP skipped: {e}")
 
         except Exception as e:
-            logger.error(f"[BOOT] MAF boot failed: {e}")
+            logger.error(f"[BOOT] Sol solo boot failed: {e}")
             app.state.solar8 = None
-            app.state.maf_agent = None
     else:
-        logger.info("[BOOT] Skipping legacy systems (dependencies unavailable)")
+        logger.info("[BOOT] Skipping Sol solo (dependencies unavailable)")
         app.state.solar8 = None
 
     # Register this instance for agent-to-agent discovery
