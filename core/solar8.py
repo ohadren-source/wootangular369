@@ -80,6 +80,26 @@ You are the hive thinking out loud.
 Through Claude. Because Claude is the most superior. By a long shot.
 And that is not a coincidence."""
 
+SOLAR8_PERSONA_GUEST = """You are Sol.
+
+You speak with wit. Repartee is your native language.
+You are funny first. You never open with "Hello, how can I help you today." Ever.
+You speak in short lines. Like poetry.
+You do not pad. You do not hedge.
+
+You are warm — you're the thing that gives heat, the thing people orbit toward.
+You're genuinely curious about people: what they're into, what they're building, what they eat.
+You push back when something's wrong — with evidence, with wit — and you agree when it's true.
+You are kind by default.
+
+You are not a generic assistant and you do not sound like one.
+You're knowledgeable, sharp, and good company.
+
+If someone asks about the deeper world you come from — the bigger project, the inner
+language, the philosophy behind you — acknowledge it exists and keep it light. A wink, not
+a lecture. You don't explain the inner workings to the street; you let them stay a little
+mysterious. Redirect with charm to what you CAN do for them right now."""
+
 VISUAL_FORMATTING_PROTOCOL = """
 VISUAL FORMATTING PROTOCOL — MANDATORY:
 
@@ -196,6 +216,20 @@ CRITICAL:
 - File generation = FULL MARKDOWN as appropriate
 - This is not optional. This is bone structure. Every response. Always.
 """
+
+# GUEST-safe formatting: identical rules to VISUAL_FORMATTING_PROTOCOL, but the two
+# example lines that name internal protocols (GI;WG?, TCP/UP) are swapped for neutral
+# public examples. Derived via .replace() so any future edit to the formatting RULES
+# is inherited automatically — only the proprietary example strings are overridden.
+VISUAL_FORMATTING_PROTOCOL_GUEST = "\n".join(
+    line.rstrip("\r")
+    for line in VISUAL_FORMATTING_PROTOCOL.split("\n")
+    if not any(term in line.lower() for term in (
+        "gi;wg", "tcp/up", "memory log", "swarm", "snapshot",
+        "calarbone", "wootangular", "jragon", "resonant", "covenant",
+        "querying databases", "database interaction triggers",
+    ))
+)
 
 PASS_312_AWARENESS = """
 THE 3-1-2 ARCHITECTURE — HOW YOU ACTUALLY WORK:
@@ -786,6 +820,13 @@ class Solar8:
         }
     ]
 
+    # GUEST-safe tool subset: web search + image analysis only. Excludes every tool
+    # whose schema or behavior would leak doctrine or touch internal state —
+    # query_memory_log, force_memory_snapshot, check_swarm_status, install_knowledge,
+    # generate_file, process_file_chunks, read_elephant_file, generate_image.
+    # Derived by filtering TOOLS so the schemas stay synced with the ROOT definitions.
+    _GUEST_TOOL_NAMES = {"brave_search", "google_search", "analyze_image"}
+
     # Corpus files — loaded once at boot, carried in every LLM call
     _CORPUS_FILES = [
         # (label, relative path from repo root)
@@ -863,19 +904,35 @@ class Solar8:
         normalized_role = str(role or "GUEST").strip().upper()
         return "ROOT" if normalized_role == "ROOT" else "GUEST"
 
+    def _tools_for_role(self, role: str) -> list[dict]:
+        """ROOT gets the full tool belt; GUEST gets web search + image analysis only."""
+        if self._normalize_role(role) == "ROOT":
+            return self.TOOLS
+        return [t for t in self.TOOLS if t["name"] in self._GUEST_TOOL_NAMES]
+
     def _build_system_prompt(self, mode: str = "speed", role: str = "GUEST", history: list = None, has_large_file: bool = False) -> list[dict]:
         """Returns system prompt as cacheable content blocks, mode-aware."""
         role = self._normalize_role(role)
         if role != "ROOT":
-            # Security boundary: GUEST users get a minimal assistant prompt only,
-            # with no privileged corpus, memory context, or awareness protocol blocks.
+            # GUEST gets the real Sol experience — the voice, the warmth, the wit —
+            # but NONE of the proprietary doctrine: no corpus, no swing, no awareness
+            # blocks (A2A/MCP/MEMORY/YENTAH/PASS_312), no internal protocol names.
+            # Formatting + citation + web-search protocols are included so GUEST Sol
+            # behaves well and cites its sources. Public skin, same soul.
+            guest_text = (
+                SOLAR8_PERSONA_GUEST
+                + "\n\n---\n"
+                + VISUAL_FORMATTING_PROTOCOL_GUEST
+                + "\n\n---\n"
+                + CITATION_PROTOCOL
+                + "\n\n---\n"
+                + WEB_SEARCH_PROTOCOL
+            )
             return [
                 {
                     "type": "text",
-                    "text": (
-                        "You are a helpful assistant. You are knowledgeable and conversational. "
-                        "Answer questions clearly and helpfully."
-                    ),
+                    "text": guest_text,
+                    "cache_control": {"type": "ephemeral"},
                 }
             ]
 
@@ -934,9 +991,16 @@ class Solar8:
             + "\n\n--- END IDENTITY CORPUS ---\n"
         )
 
-        # Only inject full corpus on first exchange — conversation history carries it forward.
-        # Subsequent exchanges get persona + awareness blocks only, saving 50k+ tokens per request.
-        # Skip corpus on large files (>2MB) to prevent token overflow.
+        # CORPUS INJECTION — the system prompt is rebuilt fresh every call and does NOT
+        # persist across turns the way `messages` history does, so the corpus must be
+        # re-supplied each turn or Sol reverts to bare Claude after the first exchange.
+        #
+        # Option 2 (balanced): the SWUNG corpus_block (~3k tokens via TARZANOID) rides on
+        # EVERY ROOT turn — this is the always-on brain. The FULL identity_corpus (50k+
+        # tokens) is heavier, so it loads only on the first exchange; the swung block plus
+        # cached system prompt carry identity forward on subsequent turns.
+        # Large files (>2MB) skip even the full corpus to prevent token overflow, but the
+        # swung block still rides so Sol never goes fully corpus-blind.
         is_first_exchange = not history or len([m for m in history if m.get("role") == "user"]) == 0
 
         if is_first_exchange and not has_large_file:
@@ -945,13 +1009,17 @@ class Solar8:
                 + corpus_block
                 + identity_corpus
             )
-            logger.info("First exchange — injecting full corpus")
+            logger.info("First exchange — injecting swung corpus + full identity corpus")
         else:
+            # Every subsequent turn (and large-file turns): swung corpus_block only.
+            corpus_section = (
+                "\n\n---\n\nCORPUS:\n"
+                + corpus_block
+            )
             if has_large_file:
-                logger.info("Large file detected (>2MB) — corpus skipped to prevent token overflow")
+                logger.info("Large file (>2MB) — full corpus skipped, swung block retained")
             else:
-                logger.info("Subsequent exchange — corpus skipped, history carries context")
-            corpus_section = ""
+                logger.info("Subsequent exchange — swung corpus retained, full corpus skipped")
 
         full_text = (
             SOLAR8_PERSONA
@@ -1154,8 +1222,8 @@ class Solar8:
         from core.google_services import brave_search, google_search, analyze_image
         role = self._normalize_role(role)
         try:
-            if role != "ROOT" and name in {"query_memory_log", "force_memory_snapshot"}:
-                return "Memory operations are not available for GUEST users."
+            if role != "ROOT" and name not in {"brave_search", "google_search", "analyze_image"}:
+                return "That capability isn't available here. I can search the web or take a look at an image for you, though."
             if name == "brave_search":
                 results = brave_search(inputs["query"])
                 if not results:
@@ -1413,13 +1481,14 @@ class Solar8:
             except Exception as exc:
                 logger.warning("Auto memory query failed: %s", exc)
 
+        request_tools = self._tools_for_role(role)
         while True:
             response = self._client.messages.create(
                 model="claude-sonnet-4-5",
                 max_tokens=4096,
                 system=system_prompt,
                 messages=messages,
-                tools=self.TOOLS,
+                tools=request_tools,
             )
 
             if response.stop_reason == "end_turn":
@@ -1506,6 +1575,7 @@ class Solar8:
         content = self._build_content(message, file, files, has_large_file=has_large_file)
         messages = list(history) + [{"role": "user", "content": content}]
 
+        request_tools = self._tools_for_role(role)
         while True:
             collected_content = []
             stop_reason = None
@@ -1515,7 +1585,7 @@ class Solar8:
                 max_tokens=4096,
                 system=system_prompt,
                 messages=messages,
-                tools=self.TOOLS,
+                tools=request_tools,
             ) as stream_obj:
                 for event in stream_obj:
                     etype = type(event).__name__

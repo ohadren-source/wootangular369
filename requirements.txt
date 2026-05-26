@@ -18,6 +18,9 @@ sse-starlette==1.8.2
 # AI - Claude (bumped from 0.25.0 — older SDK rejects tools= on messages.create and predates claude-sonnet-4-5)
 anthropic==0.104.1
 
+# Compression - TARZANOID_GOODMAN swing dictionary (without this the swing returns "corpus unavailable")
+zstandard>=0.22.0
+
 # Database - PostgreSQL (psycopg2 to match `import psycopg2` in the code; -binary bundles libpq, no system lib needed)
 psycopg2-binary>=2.9.9
 
