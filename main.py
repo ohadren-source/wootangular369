@@ -100,6 +100,16 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("[BOOT] Skipping legacy systems (dependencies unavailable)")
 
+    # Initialize Solar8 (always, regardless of legacy systems)
+    try:
+        from core.solar8 import Solar8
+        solar8 = Solar8()
+        app.state.solar8 = solar8
+        logger.info("[BOOT] Solar8 initialized")
+    except Exception as e:
+        logger.error(f"[BOOT] Solar8 initialization failed: {e}")
+        app.state.solar8 = None
+
     # Register this agent in database
     try:
         await app.state.db.register_agent(
@@ -288,13 +298,20 @@ async def solar8_chat_main(request: Request):
 
         # Use Solar8 (custom Sol Calarbone 8 instance) for chat
         solar8 = request.app.state.solar8
-        response = solar8.chat(
-            message=message,
-            history=history,
-            mode=mode,
-            role="ROOT" if is_admin else "GUEST"
-        )
-        reply_text = response.get("text", str(response)) if isinstance(response, dict) else str(response)
+        if not solar8:
+            return {"error": "Solar8 not available"}, 503
+
+        try:
+            response = solar8.chat(
+                message=message,
+                history=history,
+                mode=mode,
+                role="ROOT" if is_admin else "GUEST"
+            )
+            reply_text = response.get("text", str(response)) if isinstance(response, dict) else str(response)
+        except Exception as e:
+            logger.error(f"[CHAT] Solar8 error: {e}")
+            return {"error": f"Chat error: {str(e)}"}, 500
 
         return {
             "status": "ok",
