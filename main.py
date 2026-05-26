@@ -17,6 +17,8 @@ from backend.a2a_client import A2AClient
 from backend.task_processor import TaskProcessor
 from backend.rep_partay import get_engine, REP_PARTAY_CONFIG
 from backend.routes.rep_partay_routes import router as rep_partay_router
+from backend.routes.instances import router as instances_router
+from backend.routes.agent_chat import router as agent_chat_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -110,6 +112,14 @@ async def lifespan(app: FastAPI):
         logger.error(f"[BOOT] Solar8 initialization failed: {e}")
         app.state.solar8 = None
 
+    # Register this instance for agent-to-agent discovery
+    try:
+        from api.instance import InstanceRegistry
+        InstanceRegistry.register()
+        logger.info("[BOOT] Instance registered for agent discovery")
+    except Exception as e:
+        logger.error(f"[BOOT] Instance registration failed: {e}")
+
     # Register this agent in database
     try:
         await app.state.db.register_agent(
@@ -171,6 +181,8 @@ if os.path.exists(STATIC_DIR):
 
 # Include routers
 app.include_router(rep_partay_router)
+app.include_router(instances_router)
+app.include_router(agent_chat_router)
 
 
 # ============================================================================
