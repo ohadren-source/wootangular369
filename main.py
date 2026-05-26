@@ -25,20 +25,13 @@ logger = logging.getLogger(__name__)
 
 # Legacy imports (Solar8 + core systems)
 try:
-    import db.wootangular_banks as banks
-    from db.seed_init_cache import seed_init_cache
-    from core.init_loader import load_corpus_into_cache
-    from core.solar8 import Solar8, SOLAR8_PERSONA
-    from core.middleware import GIWGMiddleware
+    from core.maf_bootstrap import boot_maf
     from core.tcp_up import TCPUp
     LEGACY_SYSTEMS_AVAILABLE = True
 except (ImportError, ModuleNotFoundError) as e:
     logger.warning(f"[BOOT] Legacy systems unavailable: {e}")
     LEGACY_SYSTEMS_AVAILABLE = False
-    banks = None
-    seed_init_cache = None
-    load_corpus_into_cache = None
-    Solar8 = None
+    boot_maf = None
     TCPUp = None
 
 
@@ -78,38 +71,30 @@ async def lifespan(app: FastAPI):
     engine = get_engine(db=db, a2a_client=a2a_client)
     app.state.rep_partay = engine
 
-    # Boot legacy systems (memory, pattern tracking, etc.)
+    # Boot Sol Calarbone 8 + MAF stack
     if LEGACY_SYSTEMS_AVAILABLE:
         try:
-            banks.ensure_all_tables()
-            count = seed_init_cache(force=False)
-            logger.info(f"[BOOT] init_cache: {count} entries")
-
-            result = load_corpus_into_cache(banks, force=False)
-            logger.info(f"[BOOT] Corpus: {result}")
-
-            # Initialize Solar8
-            solar8 = Solar8()
+            maf_agent, solar8, a2a_app = boot_maf()
+            app.state.maf_agent = maf_agent
             app.state.solar8 = solar8
-            logger.info("[BOOT] Solar8 initialized (manual chat available at /api/solar8/chat)")
+            app.state.a2a_app = a2a_app
+            logger.info("[BOOT] Sol Calarbone 8 + MAF online")
 
-            # Initialize TCP/UP
-            tcp_up = TCPUp(db_banks=banks)
-            app.state.tcp_up = tcp_up
+            # Initialize TCP/UP (requires banks from maf_bootstrap context)
+            try:
+                import db.wootangular_banks as banks
+                tcp_up = TCPUp(db_banks=banks)
+                app.state.tcp_up = tcp_up
+                logger.info("[BOOT] TCP/UP initialized")
+            except Exception as e:
+                logger.warning(f"[BOOT] TCP/UP initialization skipped: {e}")
 
         except Exception as e:
-            logger.error(f"[BOOT] Legacy system initialization failed: {e}")
+            logger.error(f"[BOOT] MAF boot failed: {e}")
+            app.state.solar8 = None
+            app.state.maf_agent = None
     else:
         logger.info("[BOOT] Skipping legacy systems (dependencies unavailable)")
-
-    # Initialize Solar8 (always, regardless of legacy systems)
-    try:
-        from core.solar8 import Solar8
-        solar8 = Solar8()
-        app.state.solar8 = solar8
-        logger.info("[BOOT] Solar8 initialized")
-    except Exception as e:
-        logger.error(f"[BOOT] Solar8 initialization failed: {e}")
         app.state.solar8 = None
 
     # Register this instance for agent-to-agent discovery
