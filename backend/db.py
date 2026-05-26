@@ -22,7 +22,7 @@ class Database:
         db_url: libsql://... for Turso, or sqlite:/// for local SQLite
         auth_token: Turso authentication token (if using Turso)
         """
-        self.db_url = db_url or os.getenv("TURSO_DATABASE_URL") or os.getenv("DATABASE_URL", "sqlite:///rep_partay.db")
+        self.db_url = db_url or os.getenv("TURSO_DATABASE_URL") or os.getenv("TURSO_URL", "sqlite:///rep_partay.db")
         self.auth_token = auth_token or os.getenv("TURSO_DATABASE_AUTH_TOKEN")
         self.conn = None
         self.is_turso = self.db_url.startswith("libsql://")

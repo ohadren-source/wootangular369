@@ -53,8 +53,8 @@ async def lifespan(app: FastAPI):
     logger.info("🔥 WOOTANGULAR369 booting with Rep Partay...")
     logger.info("=" * 80)
 
-    # Initialize Turso/SQLite database
-    turso_url = os.getenv("TURSO_DATABASE_URL") or os.getenv("DATABASE_URL", "sqlite:///rep_partay.db")
+    # Initialize Turso/SQLite database (ephemeral, for Rep Partay only)
+    turso_url = os.getenv("TURSO_DATABASE_URL") or os.getenv("TURSO_URL", "sqlite:///rep_partay.db")
     turso_token = os.getenv("TURSO_DATABASE_AUTH_TOKEN")
 
     db = Database(db_url=turso_url)
@@ -277,7 +277,7 @@ async def solar8_chat_main(request: Request):
         body = await request.json()
         message = body.get("message", "").strip()
         history = body.get("history", [])
-        mode = body.get("mode", "default")
+        mode = body.get("mode", "auto")
 
         # Extract auth credentials from body
         username = body.get("username", "").strip()
@@ -298,6 +298,7 @@ async def solar8_chat_main(request: Request):
             return {"error": "message required"}, 400
 
         # Validate admin credentials
+        # WARNING: Defaults below are ONLY for development. Set via environment variables in production.
         is_admin = False
         admin_username = os.getenv("ADMIN_USERNAME", "Ohad")
         admin_password = os.getenv("ADMIN_PASSWORD", "route666")
