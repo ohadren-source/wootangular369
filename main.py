@@ -1,6 +1,8 @@
 """
 FastAPI main application for Sol Calarbone 8 / WOOTANGULAR369
 Rep Partay Auto-Ignition Engine integration
+
+BUILD: 2026-05-26T03:00 — Force Railway rebuild with Dockerfile
 """
 
 import os
