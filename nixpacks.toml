@@ -1,5 +1,11 @@
+[providers]
+python = "3.13"
+
+[system]
+pkgs = ["postgresql"]
+
 [phases.build]
 cmds = ["pip install -r requirements.txt"]
 
 [start]
-cmd = "gunicorn --config gunicorn_config.py --bind 0.0.0.0:$PORT api.server:app"
+cmd = "uvicorn main:app --host 0.0.0.0 --port $PORT"
