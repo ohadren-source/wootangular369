@@ -286,21 +286,22 @@ async def solar8_chat_main(request: Request):
             is_admin = True
             logger.info(f"[CHAT] Admin authenticated: {username}")
 
-        # Use TaskProcessor (Claude) with user context
-        processor = request.app.state.processor
-        task = {
-            "message": message,
-            "user": username if username else "guest",
-            "is_admin": is_admin
-        }
-        response = await processor.process(task)
+        # Use Solar8 (custom Sol Calarbone 8 instance) for chat
+        solar8 = request.app.state.solar8
+        response = solar8.chat(
+            message=message,
+            history=history,
+            mode=mode,
+            role="ROOT" if is_admin else "GUEST"
+        )
+        reply_text = response.get("text", str(response)) if isinstance(response, dict) else str(response)
 
         return {
             "status": "ok",
             "message": message,
-            "response": response,
+            "response": reply_text,
             "role": "assistant",
-            "content": response,
+            "content": reply_text,
             "agent": "sol8-main",
             "user": username if username else "guest",
             "is_admin": is_admin,
