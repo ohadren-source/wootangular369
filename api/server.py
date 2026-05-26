@@ -1032,18 +1032,20 @@ def auth():
     data = request.get_json(silent=True) or {}
     credentials = data.get("credentials", "").strip()
 
-    root_pass = os.getenv("ROOT_CREDENTIAL", "")
+    root_pass = os.getenv("ROOT_CREDENTIAL", "").strip()
 
-    logger.info(f"[AUTH] Credentials received: '{credentials}'")
-    logger.info(f"[AUTH] ROOT_CREDENTIAL: '{root_pass}'")
-    logger.info(f"[AUTH] Expected: 'Ohad:{root_pass}'")
+    # Debug: check what we're comparing
+    expected = f"Ohad:{root_pass}"
+    match = credentials == expected
 
-    if credentials == f"Ohad:{root_pass}":
-        logger.info("[AUTH] ✓ Authentication successful")
-        return jsonify({"mode": "ROOT", "name": "Ohad"})
+    if match:
+        return jsonify({"mode": "ROOT", "name": "Ohad", "debug": f"matched: {credentials}"})
     else:
-        logger.info(f"[AUTH] ✗ Authentication failed - credential mismatch")
-        return jsonify({"mode": "GUEST", "name": "mate"})
+        return jsonify({
+            "mode": "GUEST",
+            "name": "mate",
+            "debug": f"got '{credentials}' vs expected '{expected}' (pass='{root_pass}')"
+        })
 
 
 # ============================================================================
