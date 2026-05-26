@@ -18,8 +18,8 @@ sse-starlette==1.8.2
 # AI - Claude
 anthropic==0.25.0
 
-# Database - PostgreSQL (with bundled libpq for portability)
-psycopg[binary]>=3.1.0
+# Database - PostgreSQL (psycopg2 to match `import psycopg2` in the code; -binary bundles libpq, no system lib needed)
+psycopg2-binary>=2.9.9
 
 # Legacy - keeping for migration
 flask==2.3.3
