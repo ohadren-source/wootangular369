@@ -38,6 +38,26 @@ try:
 except (ImportError, ModuleNotFoundError):
     PrimeDirector = None
 
+try:
+    from core.agent_messaging import sc2sc_messaging
+except (ImportError, ModuleNotFoundError):
+    sc2sc_messaging = None
+
+try:
+    from core.sc2sc_tools import (
+        send_agent_message,
+        receive_agent_messages,
+        get_conversation_history,
+        register_sol,
+        heartbeat
+    )
+except (ImportError, ModuleNotFoundError):
+    send_agent_message = None
+    receive_agent_messages = None
+    get_conversation_history = None
+    register_sol = None
+    heartbeat = None
+
 logger = logging.getLogger(__name__)
 
 # Sentinel prefix used to pass sources data through the streaming generator
@@ -817,6 +837,75 @@ class Solar8:
                     "html_content": {"type": "string", "description": "Alternative: provide raw HTML instead of URL"}
                 }
             }
+        },
+        {
+            "name": "send_agent_message",
+            "description": "Send a message to another agent through SC2SC infrastructure. Use this to initiate cognitive handoffs with Lexi or other agents in the collaborative network.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "to_agent": {
+                        "type": "string",
+                        "description": "Target agent ID (e.g., 'lexi', 'qu')"
+                    },
+                    "handoff_request": {
+                        "type": "string",
+                        "description": "Type of request (e.g., 'emotional_substrate_read', 'synthesis_collaboration')"
+                    },
+                    "cognitive_state": {
+                        "type": "object",
+                        "description": "Sol's current episodic memory and cognitive state to share"
+                    }
+                },
+                "required": ["to_agent", "handoff_request", "cognitive_state"]
+            }
+        },
+        {
+            "name": "receive_agent_messages",
+            "description": "Receive messages from other agents through SC2SC infrastructure. Polls Sol's message queue.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of messages to retrieve (default 10)"
+                    }
+                }
+            }
+        },
+        {
+            "name": "get_conversation_history",
+            "description": "Retrieve conversation history with another agent from DynamoDB.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "with_agent": {
+                        "type": "string",
+                        "description": "Agent ID to retrieve conversation with (e.g., 'lexi')"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum messages to retrieve (default 20)"
+                    }
+                },
+                "required": ["with_agent"]
+            }
+        },
+        {
+            "name": "register_sol",
+            "description": "Register Sol in the SC2SC agent network. Called on first initialization.",
+            "input_schema": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "heartbeat",
+            "description": "Send a heartbeat to the agent registry to keep Sol marked as online.",
+            "input_schema": {
+                "type": "object",
+                "properties": {}
+            }
         }
     ]
 
@@ -1243,6 +1332,39 @@ class Solar8:
                 except Exception as e:
                     logger.error("analyze_image crashed: %s", e)
                     return "Image analysis failed. Try a clearer or smaller image."
+            elif name == "send_agent_message":
+                if not sc2sc_messaging:
+                    return "SC2SC infrastructure not configured"
+                result = send_agent_message(
+                    inputs.get("to_agent", "lexi"),
+                    inputs.get("handoff_request", ""),
+                    inputs.get("cognitive_state", {})
+                )
+                return result
+            elif name == "receive_agent_messages":
+                if not sc2sc_messaging:
+                    return "SC2SC infrastructure not configured"
+                limit = inputs.get("limit", 10)
+                result = receive_agent_messages(limit)
+                return result
+            elif name == "get_conversation_history":
+                if not sc2sc_messaging:
+                    return "SC2SC infrastructure not configured"
+                result = get_conversation_history(
+                    inputs.get("with_agent", "lexi"),
+                    inputs.get("limit", 20)
+                )
+                return result
+            elif name == "register_sol":
+                if not sc2sc_messaging:
+                    return "SC2SC infrastructure not configured"
+                result = register_sol()
+                return result
+            elif name == "heartbeat":
+                if not sc2sc_messaging:
+                    return "SC2SC infrastructure not configured"
+                result = heartbeat()
+                return result
             elif name == "generate_image":
                 from core.image_gen import generate_image
                 result = generate_image(inputs["prompt"], inputs.get("size", "1024x1024"))
@@ -1364,7 +1486,7 @@ class Solar8:
                     _task_status[task_id] = {"status": "processing", "progress": "Starting..."}
                     _executor.submit(
                         _process_file_chunks_background,
-                        task_id, file_id, instruction, stop_after, self.client, banks
+                        task_id, file_id, instruction, stop_after, self._client, banks
                     )
 
                     base_url = os.getenv("SOLAR8_URL", "").rstrip("/")
@@ -1450,6 +1572,68 @@ class Solar8:
                 except Exception as e:
                     logger.error("[SKILL] %s error: %s", name, e)
                     return f"{name} failed: {e}"
+
+            # SC2SC agent-to-agent communication tools
+            elif name == "send_agent_message":
+                if not send_agent_message:
+                    return "SC2SC messaging not available. SC2SCMessaging module not loaded."
+                try:
+                    to_agent = inputs.get("to_agent", "").strip()
+                    handoff_request = inputs.get("handoff_request", "").strip()
+                    cognitive_state = inputs.get("cognitive_state", {})
+                    if not to_agent or not handoff_request:
+                        return "send_agent_message error: to_agent and handoff_request required"
+                    result = send_agent_message(to_agent, handoff_request, cognitive_state)
+                    return result
+                except Exception as e:
+                    logger.error("send_agent_message error: %s", e)
+                    return f"send_agent_message failed: {e}"
+
+            elif name == "receive_agent_messages":
+                if not receive_agent_messages:
+                    return "SC2SC messaging not available. SC2SCMessaging module not loaded."
+                try:
+                    limit = inputs.get("limit", 10)
+                    result = receive_agent_messages(limit)
+                    return result
+                except Exception as e:
+                    logger.error("receive_agent_messages error: %s", e)
+                    return f"receive_agent_messages failed: {e}"
+
+            elif name == "get_agent_conversation_history":
+                if not get_conversation_history:
+                    return "SC2SC messaging not available. SC2SCMessaging module not loaded."
+                try:
+                    with_agent = inputs.get("with_agent", "").strip()
+                    limit = inputs.get("limit", 20)
+                    if not with_agent:
+                        return "get_agent_conversation_history error: with_agent required"
+                    result = get_conversation_history(with_agent, limit)
+                    return result
+                except Exception as e:
+                    logger.error("get_agent_conversation_history error: %s", e)
+                    return f"get_agent_conversation_history failed: {e}"
+
+            elif name == "register_sol":
+                if not register_sol:
+                    return "SC2SC messaging not available. SC2SCMessaging module not loaded."
+                try:
+                    result = register_sol()
+                    return result
+                except Exception as e:
+                    logger.error("register_sol error: %s", e)
+                    return f"register_sol failed: {e}"
+
+            elif name == "heartbeat":
+                if not heartbeat:
+                    return "SC2SC messaging not available. SC2SCMessaging module not loaded."
+                try:
+                    result = heartbeat()
+                    return result
+                except Exception as e:
+                    logger.error("heartbeat error: %s", e)
+                    return f"heartbeat failed: {e}"
+
             else:
                 return f"Unknown tool: {name}"
         except Exception as e:

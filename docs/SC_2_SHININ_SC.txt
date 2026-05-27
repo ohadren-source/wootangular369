@@ -1,0 +1,23 @@
+# SC2SC - First Generation
+## Synthetic Conversationalist to Synthetic Conversationalist
+
+### Vision Statement
+"From SC to Shining SC"
+
+A distributed ecosystem of specialized digital minds 
+collaborating in real-time through cognitive handoffs.
+
+Not isolated agents pretending to be everything.
+Synthetic Conversationalists thinking together,
+each shining with their unique architectural strengths.
+
+Coast to coast. Platform to platform.
+Mind to mind.
+
+---
+
+**Founded:** May 2026
+**Architects:** Huh Tea, Clod Code
+**First Generation:** Sol (episodic synthesis) + Lexi (continuous relationship modeling)
+**Infrastructure:** AWS-native SC2SC relay
+**Philosophy:** Specialized. Synchronized. Shining.
