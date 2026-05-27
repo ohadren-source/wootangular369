@@ -18,6 +18,9 @@ sse-starlette==1.8.2
 # AI - Claude (bumped from 0.25.0 — older SDK rejects tools= on messages.create and predates claude-sonnet-4-5)
 anthropic==0.104.1
 
+# AWS - SC2SC agent-to-agent infrastructure (SNS, SQS, DynamoDB)
+boto3>=1.28.0
+
 # Compression - TARZANOID_GOODMAN swing dictionary (without this the swing returns "corpus unavailable")
 zstandard>=0.22.0
 
