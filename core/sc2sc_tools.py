@@ -30,13 +30,17 @@ dynamodb = boto3.resource(
 def send_agent_message(to_agent: str, handoff_request: str, cognitive_state: dict) -> str:
     """Direct AWS SDK implementation - send message via SNS + DynamoDB"""
     try:
+        timestamp = datetime.utcnow().isoformat()
+        message_id = str(uuid.uuid4())
+
         message = {
-            'message_id': str(uuid.uuid4()),
+            'conversation_id': f'sol-{to_agent}',  # DynamoDB partition key
+            'timestamp': timestamp,  # DynamoDB sort key
+            'message_id': message_id,
             'from_agent': 'sol',
             'to_agent': to_agent,
             'handoff_request': handoff_request,
-            'cognitive_state': cognitive_state,
-            'timestamp': datetime.utcnow().isoformat()
+            'cognitive_state': cognitive_state
         }
 
         # Publish to SNS topic for broadcast
@@ -52,7 +56,8 @@ def send_agent_message(to_agent: str, handoff_request: str, cognitive_state: dic
 
         return json.dumps({
             'success': True,
-            'message_id': message['message_id'],
+            'message_id': message_id,
+            'conversation_id': message['conversation_id'],
             'sns_message_id': sns_response['MessageId']
         })
 
