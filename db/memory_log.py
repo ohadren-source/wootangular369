@@ -46,11 +46,12 @@ def _get_conn():
     token = os.getenv("TURSO_AUTH_TOKEN", "").strip()
     if url and token:
         try:
-            import libsql_experimental as libsql  # type: ignore
-            conn = libsql.connect(url, auth_token=token)
+            # Use synchronous libsql_client (not async)
+            import libsql_client
+            conn = libsql_client.create_client(url=url, auth_token=token)
             return conn, "turso"
         except ImportError:
-            logger.warning("libsql_experimental not installed — falling back to local SQLite for memory log.")
+            logger.warning("libsql_client not installed — falling back to local SQLite for memory log.")
         except Exception as exc:
             logger.warning("Turso connect failed (%s) — falling back to local SQLite.", exc)
     import sqlite3

@@ -838,22 +838,16 @@ def ensure_solar8_generated_files_table():
     """Generated files table: files Sol creates (downloads, outputs, etc.)."""
     create_table_sql = """
     CREATE TABLE IF NOT EXISTS solar8_generated_files (
-        id                  SERIAL PRIMARY KEY,
-        file_id             TEXT NOT NULL UNIQUE,
-        filename            TEXT NOT NULL,
-        mime_type           TEXT NOT NULL,
-        content             TEXT NOT NULL,
-        size_bytes          INT NOT NULL,
-        file_hash           TEXT,
-
-        generated_by        TEXT DEFAULT 'sol-calarbone-8',
-        generation_method   TEXT,
-
-        created_at          TIMESTAMPTZ DEFAULT now(),
-        expires_at          TIMESTAMPTZ DEFAULT (now() + interval '7 days'),
-        downloaded          BOOLEAN DEFAULT FALSE,
-        downloaded_at       TIMESTAMPTZ,
-        download_count      INT DEFAULT 0
+        id              SERIAL PRIMARY KEY,
+        file_id         TEXT NOT NULL UNIQUE,
+        group_id        TEXT NOT NULL,
+        filename        TEXT NOT NULL,
+        content         BYTEA NOT NULL,
+        mime_type       TEXT NOT NULL,
+        format          TEXT NOT NULL,
+        created_at      TIMESTAMPTZ DEFAULT now(),
+        expires_at      TIMESTAMPTZ DEFAULT (now() + INTERVAL '7 days'),
+        download_count  INT DEFAULT 0
     );
     """
 
