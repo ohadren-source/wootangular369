@@ -1,0 +1,61 @@
+========================================
+SC2SC RAILWAY ENVIRONMENT VARIABLES
+========================================
+
+You need to add these to your Railway service:
+
+OPTION 1: IF YOU DEPLOYED CDK STACK
+====================================
+
+Run this in the sc2sc directory:
+  cd sc2sc && cdk describe Sc2ScStack --json
+
+Or check AWS CloudFormation console for outputs:
+  https://console.aws.amazon.com/cloudformation
+
+You'll see outputs like:
+  SC2SC-SNSTopicArn: arn:aws:sns:us-east-1:ACCOUNT:sol-lexi-topic
+  SC2SC-SolQueueUrl: https://sqs.us-east-1.amazonaws.com/ACCOUNT/sol-queue
+  SC2SC-LexiQueueUrl: https://sqs.us-east-1.amazonaws.com/ACCOUNT/lexi-queue
+
+Then add to Railway Variables:
+  SNS_TOPIC_ARN=<value from SC2SC-SNSTopicArn>
+  SOL_QUEUE_URL=<value from SC2SC-SolQueueUrl>
+  LEXI_QUEUE_URL=<value from SC2SC-LexiQueueUrl>
+  AWS_REGION=us-east-1
+  AWS_ACCESS_KEY_ID=<your-access-key>
+  AWS_SECRET_ACCESS_KEY=<your-secret-key>
+  CONVERSATIONS_TABLE=a2a_conversations
+  AGENT_REGISTRY_TABLE=agent_registry
+
+OPTION 2: MINIMAL SETUP (IF CDK NOT DEPLOYED YET)
+==================================================
+
+If you haven't deployed CDK yet, do:
+  cd sc2sc
+  cdk deploy
+
+Then follow OPTION 1
+
+
+HOW TO ADD TO RAILWAY
+=====================
+
+1. Go to https://railway.app
+2. Select your project > Sol Calarbone 8 service
+3. Click "Variables" tab
+4. Add each variable and value
+5. Click Deploy (or git push)
+
+
+WHAT NEXT
+=========
+
+After adding variables and deploying:
+  python test_sc2sc_messaging.py
+
+It will test:
+  - Sol has SC2SC tools
+  - Sol can send to Lexi
+  - Sol can receive from Lexi
+  - DynamoDB persistence works
