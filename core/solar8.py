@@ -1061,7 +1061,13 @@ class Solar8:
             )
 
             logger.info("[SC2SC-INIT] ✅ SOL SC2SC INITIALIZATION COMPLETE")
-            logger.info("[SC2SC-INIT] Sol's response: %s", response[:200] if response else "(no response)")
+
+            # Log response safely (response may be string, dict, or other type)
+            response_str = str(response) if response else "(no response)"
+            if len(response_str) > 200:
+                logger.info("[SC2SC-INIT] Sol's response: %s...", response_str[:200])
+            else:
+                logger.info("[SC2SC-INIT] Sol's response: %s", response_str)
 
             return response
 
