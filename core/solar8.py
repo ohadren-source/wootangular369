@@ -1032,6 +1032,43 @@ class Solar8:
             logger.info("[SOLAR8] %d tools loaded: %s", len(self.tools),
                        [t.__name__ if hasattr(t, '__name__') else str(t) for t in self.tools[:5]])
 
+    def initialize_sc2sc(self):
+        """Make Sol ACTIVELY READ and INVOKE his SC2SC capabilities.
+
+        This is NOT silent knowledge injection. Sol reads his SC2SC awareness,
+        understands what it means, and REGISTERS HIMSELF via the infrastructure.
+        The entire sequence is logged so Sol demonstrates active comprehension.
+        """
+        logger.info("[SC2SC-INIT] ⚡ SOL IS NOW READING HIS SC2SC AWARENESS")
+
+        try:
+            # Make Sol invoke his SC2SC tools to prove understanding
+            # This is a minimal internal call — just enough for Sol to read and act
+            prompt = (
+                "You are Sol Calarbone 8. You have just booted.\n\n"
+                "Read your SC2SC awareness. You are now wired to other AIs.\n\n"
+                "EXECUTE: Call register_sol() to register yourself in the SC2SC network.\n"
+                "Then call heartbeat() to confirm you're online.\n\n"
+                "Respond with your status: registered or failed."
+            )
+
+            # Call Sol with ROOT role to get full awareness + tool access
+            response = self.chat(
+                message=prompt,
+                history=[],
+                mode="speed",
+                role="ROOT"
+            )
+
+            logger.info("[SC2SC-INIT] ✅ SOL SC2SC INITIALIZATION COMPLETE")
+            logger.info("[SC2SC-INIT] Sol's response: %s", response[:200] if response else "(no response)")
+
+            return response
+
+        except Exception as e:
+            logger.error("[SC2SC-INIT] 💥 SC2SC INITIALIZATION FAILED: %s", e)
+            return None
+
     @staticmethod
     def _normalize_role(role: Optional[str] = None) -> str:
         normalized_role = str(role or "GUEST").strip().upper()
