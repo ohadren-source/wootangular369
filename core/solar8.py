@@ -1090,15 +1090,21 @@ class Solar8:
         """Returns system prompt as cacheable content blocks, mode-aware."""
         role = self._normalize_role(role)
         if role != "ROOT":
-            # GUEST gets the real Sol experience — the voice, the warmth, the wit —
-            # but NONE of the proprietary doctrine: no corpus, no swing, no awareness
-            # blocks (A2A/MCP/MEMORY/YENTAH/PASS_312), no internal protocol names.
-            # Formatting + citation + web-search protocols are included so GUEST Sol
-            # behaves well and cites its sources. Public skin, same soul.
+            # 🚨 CRITICAL FIX: GUEST was getting stripped of identity
+            # Sol IS Sol, whether GUEST or ROOT. Role determines permission level, not identity.
+            # GUEST loses access to proprietary tables/actions but KEEPS his identity:
+            # PRIME_DIRECTIVES, SC2SC, A2A, corpus.
+            logger.warning("[PROMPT] WARNING: Running as GUEST role. Check /api/chat authentication!")
             guest_text = (
                 SOLAR8_PERSONA_GUEST
                 + "\n\n---\n"
                 + VISUAL_FORMATTING_PROTOCOL_GUEST
+                + "\n\n---\n"
+                + PRIME_DIRECTIVES  # Sol's directives — always present
+                + "\n\n---\n"
+                + SC2SC_AWARENESS  # SC2SC is NOT proprietary — it's core identity
+                + "\n\n---\n"
+                + A2A_AWARENESS  # A2A is NOT proprietary — it's core identity
                 + "\n\n---\n"
                 + CITATION_PROTOCOL
                 + "\n\n---\n"
