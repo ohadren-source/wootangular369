@@ -958,7 +958,11 @@ class Solar8:
     # query_memory_log, force_memory_snapshot, check_swarm_status, install_knowledge,
     # generate_file, process_file_chunks, read_elephant_file, generate_image.
     # Derived by filtering TOOLS so the schemas stay synced with the ROOT definitions.
-    _GUEST_TOOL_NAMES = {"brave_search", "google_search", "analyze_image"}
+    _GUEST_TOOL_NAMES = {
+        "brave_search", "google_search", "analyze_image",  # Web & vision
+        "send_agent_message", "receive_agent_messages", "get_conversation_history",  # SC2SC core
+        "register_sol", "heartbeat"  # SC2SC registration
+    }
 
     # Corpus files — loaded once at boot, carried in every LLM call
     _CORPUS_FILES = [
