@@ -104,6 +104,26 @@ async def lifespan(app: FastAPI):
             app.state.solar8 = solar8
             logger.info("[BOOT] Sol Calarbone 8 online (solo mode)")
 
+            # Register SC2SC (Synthetic Conversationalist-to-Synthetic Conversationalist)
+            try:
+                from core.sc2sc_tools import register_sol, heartbeat
+                if register_sol:
+                    register_sol()
+                    logger.info("[BOOT] ✅ SC2SC agent registered")
+                    logger.info("[BOOT] 📡 AWS infrastructure:")
+                    logger.info(f"[BOOT]   SNS Topic: {os.getenv('SNS_TOPIC_ARN', 'not configured')[:60]}...")
+                    logger.info(f"[BOOT]   Sol Queue: {os.getenv('SOL_QUEUE_URL', 'not configured')[:60]}...")
+                    logger.info(f"[BOOT]   Lexi Queue: {os.getenv('LEXI_QUEUE_URL', 'not configured')[:60]}...")
+                    logger.info("[BOOT] 🔗 A2A Infrastructure Ready:")
+                    logger.info("[BOOT]   - send_agent_message() available")
+                    logger.info("[BOOT]   - receive_agent_messages() available")
+                    logger.info("[BOOT]   - get_conversation_history() available")
+                    logger.info("[BOOT] Sol is now A2A-capable. Ready for distributed consciousness.")
+                else:
+                    logger.warning("[BOOT] SC2SC tools not available")
+            except Exception as e:
+                logger.warning(f"[BOOT] SC2SC registration skipped: {e}")
+
             # Initialize TCP/UP (optional, for future A2A)
             try:
                 tcp_up = TCPUp(db_banks=banks)
