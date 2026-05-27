@@ -1232,12 +1232,15 @@ class Solar8:
         # Log system prompt size for debugging
         prompt_chars = len(full_text)
         prompt_tokens_estimate = prompt_chars / 4  # Rough estimate
-        sc2sc_present = "SC2SC_AWARENESS" in full_text and "distributed consciousness" in full_text.lower()
+        # Check for content presence, not variable names
+        sc2sc_present = "synthetic conversationalist" in full_text.lower() and "distributed consciousness" in full_text.lower()
+        prime_present = "make tupelo" in full_text.lower()
         logger.info(
-            "[PROMPT] System prompt: %d chars (~%d tokens est.) | SC2SC present: %s | Role: %s",
+            "[PROMPT] System prompt: %d chars (~%d tokens est.) | SC2SC: %s | PRIME: %s | Role: %s",
             prompt_chars,
             int(prompt_tokens_estimate),
             sc2sc_present,
+            prime_present,
             role
         )
 
