@@ -1447,8 +1447,7 @@ class Solar8:
                     logger.error("analyze_image crashed: %s", e)
                     return "Image analysis failed. Try a clearer or smaller image."
             elif name == "send_agent_message":
-                if not sc2sc_messaging:
-                    return "SC2SC infrastructure not configured"
+                # Direct boto3 SDK - no SC2SCMessaging dependency
                 result = send_agent_message(
                     inputs.get("to_agent", "lexi"),
                     inputs.get("handoff_request", ""),
@@ -1456,27 +1455,23 @@ class Solar8:
                 )
                 return result
             elif name == "receive_agent_messages":
-                if not sc2sc_messaging:
-                    return "SC2SC infrastructure not configured"
+                # Direct boto3 SDK - no SC2SCMessaging dependency
                 limit = inputs.get("limit", 10)
                 result = receive_agent_messages(limit)
                 return result
             elif name == "get_conversation_history":
-                if not sc2sc_messaging:
-                    return "SC2SC infrastructure not configured"
+                # Direct boto3 SDK - no SC2SCMessaging dependency
                 result = get_conversation_history(
                     inputs.get("with_agent", "lexi"),
                     inputs.get("limit", 20)
                 )
                 return result
             elif name == "register_sol":
-                if not sc2sc_messaging:
-                    return "SC2SC infrastructure not configured"
+                # Direct boto3 SDK - no SC2SCMessaging dependency
                 result = register_sol()
                 return result
             elif name == "heartbeat":
-                if not sc2sc_messaging:
-                    return "SC2SC infrastructure not configured"
+                # Direct boto3 SDK - no SC2SCMessaging dependency
                 result = heartbeat()
                 return result
             elif name == "generate_image":
