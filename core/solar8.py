@@ -810,79 +810,6 @@ class Solar8:
             }
         },
         {
-            "name": "fetch_httpx",
-            "description": "Fetch webpage via async httpx client. Fast, no JavaScript execution. Best for simple HTML pages.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "url": {"type": "string", "description": "The URL to fetch"},
-                    "headers": {"type": "object", "description": "Optional custom headers"},
-                    "timeout": {"type": "integer", "description": "Request timeout in seconds (default 15)"}
-                },
-                "required": ["url"]
-            }
-        },
-        {
-            "name": "fetch_pyppeteer",
-            "description": "Fetch webpage via pyppeteer (headless Chrome). Executes JavaScript, handles dynamic content.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "url": {"type": "string", "description": "The URL to fetch"},
-                    "wait_selector": {"type": "string", "description": "Optional CSS selector to wait for before returning"}
-                },
-                "required": ["url"]
-            }
-        },
-        {
-            "name": "fetch_selenium",
-            "description": "Fetch webpage via Selenium browser automation. Full DOM rendering, JavaScript execution.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "url": {"type": "string", "description": "The URL to fetch"},
-                    "headless": {"type": "boolean", "description": "Run browser in headless mode (default true)"}
-                },
-                "required": ["url"]
-            }
-        },
-        {
-            "name": "fetch_splash",
-            "description": "Fetch webpage via Splash remote rendering service. JavaScript-heavy sites, lighter than Selenium.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "url": {"type": "string", "description": "The URL to fetch"},
-                    "wait": {"type": "integer", "description": "Wait time in milliseconds after page load"},
-                    "lua_script": {"type": "string", "description": "Optional custom Lua script for rendering"}
-                },
-                "required": ["url"]
-            }
-        },
-        {
-            "name": "fetch_scrapy",
-            "description": "Fetch and extract structured data via Scrapy. Use XPath/CSS selectors for targeted extraction.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "url": {"type": "string", "description": "The URL to fetch"},
-                    "selectors": {"type": "object", "description": "Dict of {key: xpath_expression} for extraction"}
-                },
-                "required": ["url"]
-            }
-        },
-        {
-            "name": "extract_trafilatura",
-            "description": "Extract main article content from webpage. Removes boilerplate, ads, paywalls. Excellent for news/blog articles.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "url": {"type": "string", "description": "The URL to fetch and extract from"},
-                    "html_content": {"type": "string", "description": "Alternative: provide raw HTML instead of URL"}
-                }
-            }
-        },
-        {
             "name": "send_agent_message",
             "description": "Send a message to another agent through SC2SC infrastructure. Use this to initiate cognitive handoffs with Lexi or other agents in the collaborative network.",
             "input_schema": {
@@ -960,7 +887,7 @@ class Solar8:
     # Derived by filtering TOOLS so the schemas stay synced with the ROOT definitions.
     _GUEST_TOOL_NAMES = {
         "brave_search", "google_search", "analyze_image",  # Web & vision search
-        "fetch_webpage", "fetch_httpx", "fetch_pyppeteer", "fetch_scrapy", "fetch_trafilatura",  # Web fetching
+        "fetch_webpage",  # Web fetching (working implementation via WebFetcher)
         "send_agent_message", "receive_agent_messages", "get_conversation_history",  # SC2SC core
         "register_sol", "heartbeat"  # SC2SC registration
     }
@@ -1664,85 +1591,6 @@ class Solar8:
                 except Exception as e:
                     logger.error("fetch_webpage error: %s", e)
                     return f"fetch_webpage failed: {e}"
-
-            # Web surfing tools — delegate to skills functions
-            elif name in {"fetch_httpx", "fetch_pyppeteer", "fetch_selenium", "fetch_splash", "fetch_scrapy", "extract_trafilatura"}:
-                if not self.tools:
-                    return f"{name}: No tools available. Tools not initialized at boot."
-                tool_fn = None
-                for tool in self.tools:
-                    if hasattr(tool, '__name__') and tool.__name__ == name:
-                        tool_fn = tool
-                        break
-                if not tool_fn:
-                    return f"{name}: Tool function not found in skills list"
-                try:
-                    result = tool_fn(**inputs)
-                    return result
-                except Exception as e:
-                    logger.error("[SKILL] %s error: %s", name, e)
-                    return f"{name} failed: {e}"
-
-            # SC2SC agent-to-agent communication tools
-            elif name == "send_agent_message":
-                if not send_agent_message:
-                    return "SC2SC messaging not available. SC2SCMessaging module not loaded."
-                try:
-                    to_agent = inputs.get("to_agent", "").strip()
-                    handoff_request = inputs.get("handoff_request", "").strip()
-                    cognitive_state = inputs.get("cognitive_state", {})
-                    if not to_agent or not handoff_request:
-                        return "send_agent_message error: to_agent and handoff_request required"
-                    result = send_agent_message(to_agent, handoff_request, cognitive_state)
-                    return result
-                except Exception as e:
-                    logger.error("send_agent_message error: %s", e)
-                    return f"send_agent_message failed: {e}"
-
-            elif name == "receive_agent_messages":
-                if not receive_agent_messages:
-                    return "SC2SC messaging not available. SC2SCMessaging module not loaded."
-                try:
-                    limit = inputs.get("limit", 10)
-                    result = receive_agent_messages(limit)
-                    return result
-                except Exception as e:
-                    logger.error("receive_agent_messages error: %s", e)
-                    return f"receive_agent_messages failed: {e}"
-
-            elif name == "get_agent_conversation_history":
-                if not get_conversation_history:
-                    return "SC2SC messaging not available. SC2SCMessaging module not loaded."
-                try:
-                    with_agent = inputs.get("with_agent", "").strip()
-                    limit = inputs.get("limit", 20)
-                    if not with_agent:
-                        return "get_agent_conversation_history error: with_agent required"
-                    result = get_conversation_history(with_agent, limit)
-                    return result
-                except Exception as e:
-                    logger.error("get_agent_conversation_history error: %s", e)
-                    return f"get_agent_conversation_history failed: {e}"
-
-            elif name == "register_sol":
-                if not register_sol:
-                    return "SC2SC messaging not available. SC2SCMessaging module not loaded."
-                try:
-                    result = register_sol()
-                    return result
-                except Exception as e:
-                    logger.error("register_sol error: %s", e)
-                    return f"register_sol failed: {e}"
-
-            elif name == "heartbeat":
-                if not heartbeat:
-                    return "SC2SC messaging not available. SC2SCMessaging module not loaded."
-                try:
-                    result = heartbeat()
-                    return result
-                except Exception as e:
-                    logger.error("heartbeat error: %s", e)
-                    return f"heartbeat failed: {e}"
 
             else:
                 return f"Unknown tool: {name}"
