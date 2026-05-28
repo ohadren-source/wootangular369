@@ -959,7 +959,8 @@ class Solar8:
     # generate_file, process_file_chunks, read_elephant_file, generate_image.
     # Derived by filtering TOOLS so the schemas stay synced with the ROOT definitions.
     _GUEST_TOOL_NAMES = {
-        "brave_search", "google_search", "analyze_image",  # Web & vision
+        "brave_search", "google_search", "analyze_image",  # Web & vision search
+        "fetch_webpage", "fetch_httpx", "fetch_pyppeteer", "fetch_scrapy", "fetch_trafilatura",  # Web fetching
         "send_agent_message", "receive_agent_messages", "get_conversation_history",  # SC2SC core
         "register_sol", "heartbeat"  # SC2SC registration
     }
