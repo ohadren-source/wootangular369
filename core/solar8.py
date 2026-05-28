@@ -1559,14 +1559,19 @@ class Solar8:
                     from core.web_fetch import WebFetcher
                     import asyncio
 
-                    fetcher = WebFetcher(timeout=30)
+                    def fetch_in_thread():
+                        """Run async fetch in its own event loop (separate thread)."""
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            fetcher = WebFetcher(timeout=30)
+                            return loop.run_until_complete(fetcher.fetch(url))
+                        finally:
+                            loop.close()
 
-                    # Run async fetcher in executor
-                    loop = asyncio.new_event_loop()
-                    try:
-                        result = loop.run_until_complete(fetcher.fetch(url))
-                    finally:
-                        loop.close()
+                    # Execute in thread pool to avoid event loop collision
+                    with ThreadPoolExecutor(max_workers=1) as executor:
+                        result = executor.submit(fetch_in_thread).result(timeout=35)
 
                     if not result.get("success"):
                         error_msg = result.get("error", "Unknown error")
