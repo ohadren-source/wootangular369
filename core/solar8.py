@@ -1353,7 +1353,7 @@ class Solar8:
         from core.google_services import brave_search, google_search, analyze_image
         role = self._normalize_role(role)
         try:
-            if role != "ROOT" and name not in {"brave_search", "google_search", "analyze_image"}:
+            if role != "ROOT" and name not in self._GUEST_TOOL_NAMES:
                 return "That capability isn't available here. I can search the web or take a look at an image for you, though."
             if name == "brave_search":
                 results = brave_search(inputs["query"])
