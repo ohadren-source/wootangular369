@@ -443,9 +443,131 @@ async def stub_auth(request: Request):
         return {"mode": "GUEST", "name": "mate"}
 
 @app.post("/api/elephant/upload")
-async def stub_elephant_upload(request: Request):
-    """Stub: file upload endpoint."""
-    return {"status": "uploaded", "id": "stub-upload-id"}
+async def elephant_upload(request: Request):
+    """
+    Handle file uploads to S3.
+    Accepts multipart/form-data with file field.
+    Returns S3 URL and file metadata.
+    """
+    import uuid
+    import datetime
+    import boto3
+    from botocore.exceptions import BotoCoreError, ClientError
+
+    S3_BUCKET = os.getenv("S3_BUCKET", "wootangular369-uploads")
+
+    try:
+        form = await request.form()
+        file = form.get("file")
+
+        if not file:
+            return {"error": "file required"}, 400
+
+        content = await file.read()
+        filename = file.filename
+
+        if not filename:
+            return {"error": "filename required"}, 400
+
+        file_id = str(uuid.uuid4())
+        s3_key = f"uploads/{file_id}/{filename}"
+
+        try:
+            s3 = boto3.client("s3")
+            s3.put_object(
+                Bucket=S3_BUCKET,
+                Key=s3_key,
+                Body=content,
+            )
+            s3_url = f"s3://{S3_BUCKET}/{s3_key}"
+
+            logger.info(f"[UPLOAD] File uploaded: {filename} → {s3_key}")
+
+            return {
+                "status": "uploaded",
+                "id": file_id,
+                "filename": filename,
+                "size": len(content),
+                "s3_url": s3_url,
+                "s3_key": s3_key,
+                "timestamp": datetime.datetime.utcnow().isoformat()
+            }
+        except (BotoCoreError, ClientError) as e:
+            logger.error(f"[UPLOAD] S3 upload failed: {e}")
+            return {"error": f"S3 upload failed: {str(e)}"}, 500
+
+    except Exception as e:
+        logger.error(f"[UPLOAD] Failed: {e}")
+        return {"error": str(e)}, 500
+
+
+@app.post("/api/elephant/process")
+async def elephant_process(request: Request):
+    """
+    Process an uploaded file.
+    Reads from S3, processes with Claude, writes result back to S3.
+    """
+    import datetime
+    import boto3
+    from botocore.exceptions import BotoCoreError, ClientError
+
+    S3_BUCKET = os.getenv("S3_BUCKET", "wootangular369-uploads")
+
+    try:
+        body = await request.json()
+        file_id = body.get("file_id", "").strip()
+        s3_key = body.get("s3_key", "").strip()
+        instruction = body.get("instruction", "").strip()
+
+        if not file_id or not s3_key or not instruction:
+            return {"error": "file_id, s3_key, and instruction required"}, 400
+
+        # Read file from S3
+        try:
+            s3 = boto3.client("s3")
+            response = s3.get_object(Bucket=S3_BUCKET, Key=s3_key)
+            file_content = response["Body"].read().decode("utf-8", errors="replace")
+        except (BotoCoreError, ClientError) as e:
+            logger.error(f"[PROCESS] S3 read failed: {e}")
+            return {"error": f"File not found: {s3_key}"}, 404
+
+        # Process with Claude via TaskProcessor
+        processor = request.app.state.processor
+        task = {
+            "message": f"Process this file with instruction: {instruction}\n\nFile content:\n{file_content[:5000]}",
+            "file_id": file_id,
+            "instruction": instruction
+        }
+
+        result = await processor.process(task)
+
+        # Store result back to S3
+        result_key = f"results/{file_id}/processed.txt"
+        try:
+            s3.put_object(
+                Bucket=S3_BUCKET,
+                Key=result_key,
+                Body=result.encode("utf-8"),
+            )
+            result_url = f"s3://{S3_BUCKET}/{result_key}"
+
+            logger.info(f"[PROCESS] File processed: {file_id} → {result_key}")
+
+            return {
+                "status": "processed",
+                "file_id": file_id,
+                "result": result,
+                "result_s3_url": result_url,
+                "result_s3_key": result_key,
+                "timestamp": datetime.datetime.utcnow().isoformat()
+            }
+        except (BotoCoreError, ClientError) as e:
+            logger.error(f"[PROCESS] S3 write failed: {e}")
+            return {"error": f"Failed to store result: {str(e)}"}, 500
+
+    except Exception as e:
+        logger.error(f"[PROCESS] Failed: {e}")
+        return {"error": str(e)}, 500
 
 @app.post("/api/generate-files/download-all")
 async def stub_download_all(request: Request):
