@@ -560,6 +560,31 @@ Revise according to the instruction. Preserve structure."""
             })
 
     # ========================================================================
+    # ELEPHANT ENGINE — Lambda-based large file processing
+    # ========================================================================
+
+    def process_file_via_lambda(file_key: str, operations: list, bucket: str = None) -> str:
+        """
+        Send a file to AWS Lambda for processing.
+        Use for files >900KB that need HTML/PDF/CSV/Image transformations.
+
+        Args:
+            file_key: S3 file key (path/to/file.html)
+            operations: List of operations, e.g., [{"type": "replace_tag", "find": "h2", "replace": "h3"}]
+            bucket: Optional custom S3 bucket name
+
+        Returns:
+            JSON with download_url, output_size, operations_applied
+        """
+        try:
+            from core.elephant_engine import process_large_file
+            result = process_large_file(file_key, operations, bucket)
+            return json.dumps(result)
+        except Exception as exc:
+            logger.error("[SKILL] process_file_via_lambda error: %s", exc)
+            return json.dumps({"success": False, "error": str(exc)})
+
+    # ========================================================================
 
     return [
         solar8_chat,
@@ -579,4 +604,5 @@ Revise according to the instruction. Preserve structure."""
         process_file_chunk,
         rebuild_file_from_chunks,
         download_processed_file,
+        process_file_via_lambda,
     ]
