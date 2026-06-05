@@ -1326,11 +1326,20 @@ class Solar8:
                 try:
                     import base64
                     if isinstance(data, str):
-                        base64.b64decode(data[:100])
+                        # Validate full base64 (or at least more of it)
+                        if not data or len(data) < 50:
+                            logger.error("[IMAGE] Invalid image: data too short (%d chars)", len(data))
+                            return f"[Image failed to load - data too short. {len(data)} bytes received.]\n\n{message}"
+                        # Try to decode to validate format
+                        base64.b64decode(data)
+                    else:
+                        logger.error("[IMAGE] Invalid image: data is not a string (got %s)", type(data).__name__)
+                        return f"[Image failed to load - invalid data type.]\n\n{message}"
                 except Exception as e:
-                    logger.warning("Invalid image data: %s", e)
-                    return message
+                    logger.error("[IMAGE] Invalid image data: %s", e)
+                    return f"[Image failed to load: {str(e)}]\n\n{message}"
 
+                logger.info("[IMAGE] Valid image loaded: %s (%d bytes)", mime, len(data) if isinstance(data, str) else len(str(data)))
                 return [
                     {
                         "type": "image",
@@ -1375,8 +1384,18 @@ class Solar8:
                 try:
                     import base64
                     data = f.get("data", "")
+                    if not data:
+                        logger.error("[IMAGE] Empty image data for %s", f.get("name", "unknown"))
+                        text_prefix += f"[FILE SKIPPED: '{f.get('name', 'unknown')}' no data]\n"
+                        continue
                     if isinstance(data, str):
-                        base64.b64decode(data[:100])
+                        if len(data) < 50:
+                            logger.error("[IMAGE] Image data too short: %d chars", len(data))
+                            text_prefix += f"[FILE SKIPPED: '{f.get('name', 'unknown')}' data too short]\n"
+                            continue
+                        # Validate base64
+                        base64.b64decode(data)
+                    logger.info("[IMAGE] Valid image in batch: %s (%d bytes)", f.get("name", "unknown"), len(data) if isinstance(data, str) else 0)
                     blocks.append({
                         "type": "image",
                         "source": {
@@ -1386,8 +1405,8 @@ class Solar8:
                         },
                     })
                 except Exception as e:
-                    logger.warning("Invalid image in batch: %s", e)
-                    text_prefix += f"[FILE SKIPPED: '{f.get('name', 'unknown')}' invalid format]\n"
+                    logger.error("[IMAGE] Invalid image in batch: %s - %s", f.get('name', 'unknown'), e)
+                    text_prefix += f"[FILE SKIPPED: '{f.get('name', 'unknown')}' error: {str(e)[:50]}]\n"
             elif mime == "application/pdf":
                 blocks.append({
                     "type": "document",
