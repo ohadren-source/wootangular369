@@ -473,7 +473,13 @@ async def elephant_upload(request: Request):
         s3_key = f"uploads/{file_id}/{filename}"
 
         try:
-            s3 = boto3.client("s3")
+            s3 = boto3.client(
+                "s3",
+                endpoint_url=os.getenv("S3_ENDPOINT"),
+                aws_access_key_id=os.getenv("S3_ACCESS_KEY_ID"),
+                aws_secret_access_key=os.getenv("S3_SECRET_ACCESS_KEY"),
+                region_name=os.getenv("S3_REGION", "us-east-1")
+            )
             s3.put_object(
                 Bucket=S3_BUCKET,
                 Key=s3_key,
@@ -524,7 +530,13 @@ async def elephant_process(request: Request):
 
         # Read file from S3
         try:
-            s3 = boto3.client("s3")
+            s3 = boto3.client(
+                "s3",
+                endpoint_url=os.getenv("S3_ENDPOINT"),
+                aws_access_key_id=os.getenv("S3_ACCESS_KEY_ID"),
+                aws_secret_access_key=os.getenv("S3_SECRET_ACCESS_KEY"),
+                region_name=os.getenv("S3_REGION", "us-east-1")
+            )
             response = s3.get_object(Bucket=S3_BUCKET, Key=s3_key)
             file_content = response["Body"].read().decode("utf-8", errors="replace")
         except (BotoCoreError, ClientError) as e:
