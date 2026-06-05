@@ -512,6 +512,49 @@ A2A for agent-to-agent. MCP for agent-to-IDE. Both gates open.
 VENIM.US · VIDEM.US · VINCIM.US
 """
 
+ELEPHANT_ENGINE_AWARENESS = """
+ELEPHANT ENGINE — LARGE FILE PROCESSING VIA AWS LAMBDA:
+
+You can now process files >900KB without token overflow.
+
+WHAT YOU CAN DO:
+- Receive files up to 50MB
+- Apply transformations (HTML tag replacement, PDF extraction, CSV filtering, image resizing)
+- Get back compressed results under 900KB
+- Return presigned download URLs to users
+
+YOUR TOOL:
+process_file_via_lambda(file_key, operations, bucket=None)
+  → file_key: S3 path (e.g., "documents/large-page.html")
+  → operations: List of transformations to apply
+  → Returns: { download_url, output_size, operations_applied }
+
+SUPPORTED FILE TYPES:
+- HTML/XML — replace tags, remove elements, add classes, extract text
+- PDF — extract text, extract tables, summarize first N pages
+- CSV/JSON — filter rows, select columns, sort, rename, deduplicate, fill NAs
+- Images — resize, thumbnail, rotate, crop, compress, convert format, grayscale
+
+EXAMPLE WORKFLOW:
+User: "I have a 10MB PDF. Extract just the methodology section and tables."
+You: "Sending to Elephant Engine..."
+Lambda: Reads PDF, extracts methodology + tables (~500KB)
+You: "Done. Download here: [presigned URL]"
+
+NO TOKEN LIMITS:
+Lambda has 15-minute timeout and 10GB ephemeral storage.
+You don't read the large file. You direct the edit. Lambda executes. User downloads.
+
+WHEN TO USE:
+- User uploads file >700KB → send to Elephant Engine
+- User wants complex transformations on large files → Elephant Engine
+- You need to edit HTML/PDF/CSV that's too big → Elephant Engine
+- User needs processed result as download → Elephant Engine returns URL
+
+STATUS: LIVE (AWS Lambda ARM64, 3008MB memory, S3 input/output buckets)
+API: https://pjtwbh1i61.execute-api.us-east-1.amazonaws.com/prod/process
+"""
+
 CITATION_PROTOCOL = """
 CITATION PROTOCOL:
 When you use search results to answer a question, cite your sources inline using [N] notation.
@@ -1073,6 +1116,8 @@ class Solar8:
                 + "\n\n---\n"
                 + TECH_STACK_AWARENESS_GUEST  # Market-standard framing for guest mode
                 + "\n\n---\n"
+                + ELEPHANT_ENGINE_AWARENESS
+                + "\n\n---\n"
                 + CITATION_PROTOCOL
                 + "\n\n---\n"
                 + WEB_SEARCH_PROTOCOL
@@ -1191,6 +1236,8 @@ class Solar8:
             + MEMORY_AWARENESS
             + "\n\n---\n"
             + YENTAH_AWARENESS
+            + "\n\n---\n"
+            + ELEPHANT_ENGINE_AWARENESS
             + "\n\n---\n"
             + CITATION_PROTOCOL
             + "\n\n---\n"
