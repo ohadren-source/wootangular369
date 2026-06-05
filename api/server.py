@@ -13,6 +13,7 @@ import zipfile
 from datetime import datetime
 import requests as http_requests
 import anthropic
+import boto3
 from flask import Flask, request, jsonify, send_from_directory, Response, send_file, render_template
 from flask_cors import CORS
 from io import BytesIO
@@ -1157,6 +1158,88 @@ def download_all_files():
         )
     except Exception as e:
         logger.error("download_all_files error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/process-large-file", methods=["POST"])
+def process_large_file():
+    """
+    Upload and process a large file via Lambda (Elephant Engine).
+
+    Multipart form:
+    - file: the file to process
+    - operations: JSON array of operations, e.g. [{"type": "replace_tag", "find": "h2", "replace": "h3"}]
+
+    Returns presigned download URL of processed result.
+    """
+    try:
+        if 'file' not in request.files:
+            return jsonify({"error": "No file provided"}), 400
+
+        file = request.files['file']
+        if not file or file.filename == '':
+            return jsonify({"error": "No file selected"}), 400
+
+        # Parse operations
+        ops_param = request.form.get('operations', '[]')
+        try:
+            operations = json.loads(ops_param)
+        except json.JSONDecodeError:
+            operations = []
+
+        filename = file.filename
+        content = file.read()
+        file_size = len(content)
+
+        # Check size limit
+        if file_size > 52428800:  # 50MB
+            return jsonify({"error": f"File too large: {file_size} bytes (max 50MB)"}), 413
+
+        logger.info("[ELEPHANT] Processing %s (%d bytes) via Lambda", filename, file_size)
+
+        # Upload to S3 input bucket
+        s3 = boto3.client('s3')
+        input_bucket = os.getenv('ELEPHANT_INPUT_BUCKET', 'sol-file-processor-input-636868830628')
+        file_key = f"{uuid.uuid4()}/{filename}"
+
+        try:
+            s3.put_object(
+                Bucket=input_bucket,
+                Key=file_key,
+                Body=content,
+                ContentType=file.content_type or 'application/octet-stream'
+            )
+            logger.info("[ELEPHANT] Uploaded to S3: s3://%s/%s", input_bucket, file_key)
+        except Exception as e:
+            logger.error("[ELEPHANT] S3 upload failed: %s", e)
+            return jsonify({"error": f"Failed to upload file: {e}"}), 500
+
+        # Process via Lambda
+        try:
+            from core.elephant_engine import process_large_file as process_via_lambda
+            result = process_via_lambda(file_key, operations, bucket=input_bucket)
+
+            if result.get("success"):
+                logger.info("[ELEPHANT] ✅ Processing complete: %s", result)
+                return jsonify({
+                    "status": "ok",
+                    "filename": filename,
+                    "input_size": file_size,
+                    "output_size": result.get("output_size"),
+                    "operations_applied": result.get("operations_applied"),
+                    "download_url": result.get("download_url"),
+                    "output_location": result.get("output_location"),
+                    "expires_in": "1 hour"
+                }), 200
+            else:
+                logger.error("[ELEPHANT] Processing failed: %s", result)
+                return jsonify({"error": result.get("error", "Processing failed")}), 500
+        except Exception as e:
+            logger.error("[ELEPHANT] Lambda processing failed: %s", e)
+            return jsonify({"error": f"Processing failed: {e}"}), 500
+
+    except Exception as e:
+        logger.error("process_large_file error: %s", e)
         return jsonify({"error": str(e)}), 500
 
 
