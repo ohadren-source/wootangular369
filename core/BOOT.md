@@ -664,15 +664,20 @@ raw = base64.b64decode(truncated)  # ✅ No "Incorrect padding" error
 
 ### PHASE 1 vs PHASE 2
 
-**Phase 1 (NOW - May 7, 2026):** File upload + storage. Direct read-modify-regenerate workflows.
+**Phase 1 (May 6, 2026):** File upload + storage. Direct read-modify-regenerate workflows.
 - Available: `read_elephant_file(file_id)` — streams file content from database
 - Available: `generate_file(content, filename, format)` — stores revised content, returns download link
 - For editing workflows: Upload file → read_elephant_file → modify → generate_file → download
 
-**Phase 2 (Planned):** Semantic chunking + multi-chunk processing pipeline.
-- Planned: `upload_file_large()`, `list_file_chunks()`, `process_file_chunk()`, `rebuild_file_from_chunks()`, `download_processed_file()`
-- For large file processing: Break into chunks, process each with Claude instruction context, assemble result
-- Designed for 5MB+ files where context needs to be applied chunk-by-chunk
+**Phase 2 (NOW - May 7, 2026):** Semantic chunking + multi-chunk processing pipeline for files up to 9MB.
+- **Implemented:** `process_file_chunks(file_id, instruction)` — orchestrates chunk-by-chunk processing
+- **Chunking:** `/api/elephant/upload` auto-chunks files >700KB at semantic boundaries (HTML sections, code blocks)
+- **Processing:** Sol processes each chunk independently with context from adjacent chunks (400-token target per chunk)
+- **Assembly:** Chunks reassembled with overlap trimming, SHA-256 integrity verification
+- **Output:** Downloadable reassembled file via `/api/generate-file/{output_id}`
+- **Status tracking:** `/api/chunk-task-status/{task_id}` streams progress (background thread pool execution)
+- **For large file processing:** Upload file >700KB → Sol calls `process_file_chunks(file_id, "your instruction")` → monitor progress → download result
+- **Database:** Chunks stored in `solar8_file_chunks` with dependencies, context, processing state
 
 ---
 
@@ -707,19 +712,31 @@ Quality: Full document understanding (history > corpus for context)
 
 **Database:**
 - `solar8_files` — file metadata, lifecycle state (uploaded → chunking → chunked → processing → complete)
-- `solar8_file_chunks` — chunk storage, processing state, dependencies, retry logic
+- `solar8_file_chunks` — chunk storage, processing state, dependencies, retry logic, processed content
+- `solar8_generated_files` — reassembled files ready for download
 
-**Skills (callable):**
-- `upload_file_large(filename, mime_type, base64_data, user_instruction)` → file_id
-- `list_file_chunks(file_id)` → status of all chunks + token count
-- `process_file_chunk(file_id, chunk_number)` → send to Claude, store result
-- `rebuild_file_from_chunks(file_id)` → assemble output with integrity checks
-- `download_processed_file(file_id)` → retrieve revised content
+**HTTP Endpoints:**
+- `POST /api/elephant/upload` — auto-chunks files >700KB, returns file_id + chunk_count
+- `GET /api/elephant/read/<file_id>` — streams file content by ID
+- `GET /api/chunk-task-status/<task_id>` — polling endpoint for background task progress
+- `GET /api/generate-file/<file_id>` — download processed/generated file
+
+**Sol's Chunked Processing Tool:**
+- `process_file_chunks(file_id, instruction, stop_after_chunk?)` — orchestrates chunk processing
+  - Fetches pending chunks from database
+  - For each chunk: builds prompt with context from adjacent chunks, sends to Claude, stores result
+  - Reassembles chunks with overlap trimming and SHA-256 verification
+  - Returns download URL + task_id for progress tracking
+  - Runs in background thread pool (non-blocking)
 
 **File Processor (`core/file_processor.py`):**
-- `chunk_file_semantic()` — split at logical boundaries (never mid-tag, never mid-UTF8)
-- `build_chunk_instruction()` — generate precision prompts with prior context
-- `build_dependencies()` — track which chunks affect which
+- `chunk_file_semantic(content, mime_type, target_bytes)` — split at logical boundaries (HTML sections, code blocks)
+- `build_chunk_instruction(file_id, chunk_number, ...)` — generate precision prompts with prior context
+- `build_dependencies(chunk_num, total_chunks)` — track dependencies between chunks
+
+**Database Helpers (`db/wootangular_banks.py`):**
+- `reassemble_chunks(file_id)` — merge processed chunks with overlap trimming, return (content, sha256_hash)
+- `get_chunk_context(file_id, chunk_number)` — extract context from previous chunk for prompt injection
 
 ### Semantic Chunking by MIME Type
 

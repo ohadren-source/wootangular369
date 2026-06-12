@@ -10,6 +10,7 @@ import uuid
 import logging
 import threading
 import zipfile
+import hashlib
 from datetime import datetime
 import requests as http_requests
 import anthropic
@@ -1256,24 +1257,86 @@ def elephant_upload():
 
         file_id = str(uuid.uuid4())
         filename = file.filename
-        content = file.read()
+        content_bytes = file.read()
+        mime_type = file.content_type or "application/octet-stream"
 
-        # Store in database with chunking metadata
-        banks.store_generated_file(
-            file_id=file_id,
-            filename=filename,
-            mime_type=file.content_type or "application/octet-stream",
-            content=content,
-            generation_method="elephant_upload"
-        )
+        # Convert bytes to string for processing
+        try:
+            if isinstance(content_bytes, bytes):
+                content = content_bytes.decode('utf-8')
+            else:
+                content = content_bytes
+        except UnicodeDecodeError:
+            content = content_bytes.decode('utf-8', errors='replace')
 
-        logger.info("[ELEPHANT] Uploaded %s (%d bytes) as %s", filename, len(content), file_id)
-        return jsonify({
-            "status": "ok",
-            "file_id": file_id,
-            "filename": filename,
-            "size": len(content)
-        }), 200
+        size_bytes = len(content_bytes)
+        file_hash = hashlib.sha256(content_bytes).hexdigest()
+
+        # Files > 700KB are chunked for processing
+        if size_bytes > 700000:
+            from core.file_processor import chunk_file_semantic, build_dependencies
+
+            # Store parent file metadata
+            banks.store_file(
+                file_id=file_id,
+                filename=filename,
+                mime_type=mime_type,
+                size_bytes=size_bytes,
+                file_hash=file_hash,
+                user_instruction="",
+                original_user_msg=""
+            )
+
+            # Chunk the file semantically
+            # chunk_file_semantic returns List[Tuple[str, int]] — (chunk_text, chunk_number)
+            chunks = chunk_file_semantic(content, mime_type=mime_type, target_bytes=400000)
+            total_chunks = len(chunks)
+
+            # Store each chunk — unpack the (chunk_text, chunk_number) tuple directly
+            for chunk_content, chunk_num in chunks:
+                chunk_hash = hashlib.sha256(chunk_content.encode()).hexdigest()
+                deps = build_dependencies(chunk_num - 1, total_chunks - 1)
+
+                banks.store_file_chunk(
+                    file_id=file_id,
+                    chunk_number=chunk_num,
+                    chunk_total=total_chunks,
+                    original_content=chunk_content,
+                    original_hash=chunk_hash,
+                    dependencies=deps
+                )
+
+            # Update parent status
+            banks.update_file_status(file_id, "chunked", chunk_count=total_chunks)
+
+            logger.info("[ELEPHANT] Chunked %s (%d bytes, %d chunks) as %s", filename, size_bytes, total_chunks, file_id)
+            return jsonify({
+                "status": "chunked",
+                "file_id": file_id,
+                "filename": filename,
+                "size_bytes": size_bytes,
+                "file_hash": file_hash,
+                "chunk_count": total_chunks,
+                "next_step": "Call Sol with: process_file_chunks(file_id='{file_id}', instruction='Your instruction here')"
+            }), 200
+        else:
+            # Small files store directly without chunking
+            banks.store_generated_file(
+                file_id=file_id,
+                filename=filename,
+                mime_type=mime_type,
+                content=content,
+                generation_method="elephant_upload"
+            )
+
+            logger.info("[ELEPHANT] Uploaded %s (%d bytes) as %s", filename, size_bytes, file_id)
+            return jsonify({
+                "status": "ok",
+                "file_id": file_id,
+                "filename": filename,
+                "size_bytes": size_bytes,
+                "file_hash": file_hash
+            }), 200
     except Exception as e:
         logger.error("elephant_upload error: %s", e)
         return jsonify({"error": str(e)}), 500
